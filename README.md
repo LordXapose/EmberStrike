@@ -27,7 +27,7 @@ Start an interactive session:
 emberstrike
 ```
 
-The interactive terminal opens with an EmberStrike banner crediting LordXapose. Structured JSON and Markdown output stays free of banner text.
+The interactive terminal opens with the custom EmberStrike ASCII banner you supplied and credits LordXapose. Structured JSON and Markdown output stays free of banner text.
 
 Use dedicated commands for searching and viewing a CVE advisory:
 
