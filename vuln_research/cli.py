@@ -7,13 +7,11 @@ from pathlib import Path
 
 import argcomplete
 from argcomplete.completers import ChoicesCompleter
-import questionary
 from rich import box
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-from questionary import Choice
 
 from .models import Advisory, AssetObservation
 from .banner import BANNER
@@ -27,6 +25,7 @@ from .reports import (
     to_plain,
 )
 from .research import filter_report_severity, run_research
+from .selectable_table import run_selectable_table
 from .sources import cisa_kev, nvd
 from .sources.base import SourceError
 
@@ -249,45 +248,6 @@ def _render_advisory(advisory: Advisory, source_warnings: list[str], console: Co
         console.print(f"[yellow]Source notice:[/] {warning}")
 
 
-def _select_match(report, console: Console) -> None:
-    if not report.matches:
-        return
-    title_width = 42
-    cve_width = 15
-    severity_width = 20
-    choices = [
-        Choice(
-            title=(
-                f"{' '.join(match.advisory.title.split())[:title_width]:<{title_width}}  "
-                f"{match.advisory.cve_id:<{cve_width}}  "
-                f"{(match.advisory.published[:10] if match.advisory.published else 'Unknown'):<10}  "
-                f"{match.advisory.severity[:severity_width]}"
-            ),
-            value=match,
-        )
-        for match in report.matches
-    ]
-    choices.append(Choice(title="Exit", value="__exit__"))
-    headings = (
-        f"{'Vulnerability name':<{title_width}}  {'CVE':<{cve_width}}  "
-        f"{'Published':<10}  Severity"
-    )
-    while True:
-        try:
-            selected = questionary.select(
-                f"{headings}\n{'-' * len(headings)}\nUse Up/Down to select a row, Enter to view details:",
-                choices=choices,
-                qmark="",
-                pointer=">",
-                use_shortcuts=False,
-            ).ask()
-        except KeyboardInterrupt:
-            return
-        if selected is None or selected == "__exit__":
-            return
-        _render_advisory(selected.advisory, report.source_warnings, console)
-
-
 def _show_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="emberstrike show",
@@ -415,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
     if terminal_output and not interactive_selection:
         _render_rich(report, console)
     elif interactive_selection:
-        _select_match(report, console)
+        run_selectable_table(report, no_color=no_color)
     else:
         print(rendered)
     return 0

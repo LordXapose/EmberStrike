@@ -45,7 +45,7 @@ emberstrike show CVE-2023-42794
 
 `-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` displays a compact table of vulnerability name, CVE ID, publication date, and severity. By default, Critical, High, and Medium severity records are shown; Low or unscored records are hidden. Add `--include-low` to include them. These are vulnerability advisory names, not exploit or proof-of-concept names. To inspect one CVE, use `emberstrike show CVE-ID`; its output is limited to a boxed details table and a source-name/link table. JSON output remains available for full structured records. EmberStrike does not provide exploit instructions, payloads, or proof-of-concept links.
 
-In an interactive terminal, use the Up/Down arrow keys to highlight a result row and press Enter to open that CVE's detail tables. The selection menu returns after each record; select `Exit` or press Escape to leave. Non-interactive and redirected output remains a static table. Pass `--non-interactive` to disable prompts and row selection.
+In an interactive terminal, use the Up/Down arrow keys to move the highlighted row and press Enter to open that CVE's details and source links. Press Escape or Backspace to return to the result list, or Q to quit. Non-interactive and redirected output remains a static table. Pass `--non-interactive` to disable prompts and row selection.
 
 Or provide observed details as flags. No target traffic is sent:
 
