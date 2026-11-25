@@ -35,47 +35,59 @@ def build_parser(prog: str = "emberstrike") -> argparse.ArgumentParser:
         prog=prog,
         description="EmberStrike by LordXapose — research public vulnerability records against service details you already observed. Never scans or contacts the asset.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
+        epilog="""COMMANDS
+  emberstrike [OPTIONS]             Interactive research, or research using supplied options
+  emberstrike search [OPTIONS]      Search public vulnerability sources for an observation
+  emberstrike services              Browse common service, product, and completion suggestions
+  emberstrike show CVE-ID           Read detailed public advisory information for one CVE
+  emberstrike COMMAND --help        Show help for search, services, or show
+
+EXAMPLES
   emberstrike
-  emberstrike search -n "Quarterly review" -s HTTPS -p "Apache Tomcat" -v Apache
+  emberstrike search -n "Quarterly review" -s HTTPS -p "Apache Tomcat" -v Apache -V 9.0.80
   emberstrike services
   emberstrike show CVE-2023-42794
-  emberstrike --assessment "Quarterly review" --scope-notes "Written approval, staging only" \\
-    --asset app-01 --port 8443 --protocol https --service web-server \\
-    --product "Apache Tomcat" --vendor Apache --observed-version 9.0.80 \\
-    --identified-by "approved asset inventory" --confidence Medium --format markdown
-  emberstrike --product "OpenSSL" --vendor OpenSSL --observed-version 3.0.12 \\
+  emberstrike search -n "Quarterly review" --scope-notes "Written approval" \\
+    -a app-01 -P 8443 --protocol https -s HTTPS -p "Apache Tomcat" \\
+    -v Apache -V 9.0.80 --identified-by inventory -c Medium \\
+    --format markdown --output report.md
+  emberstrike search -n "Offline review" -p OpenSSL -v OpenSSL -V 3.0.12 \\
     --offline --format json --output report.json
 
-Assessment details are stored locally unless you explicitly save a report with --output.
-No credentials are requested or needed.
+The tool only queries public vulnerability sources; it never contacts an assessed asset.
+Results are possible matches, not confirmation that a host is vulnerable.
+Assessment details stay local unless you explicitly save a report. No credentials are needed.
+Use only within written authorization and scope.
 
 EmberStrike | Developer: LordXapose""",
     )
-    parser.add_argument("-n", "--assessment", help="Assessment or engagement name")
-    parser.add_argument("--scope-notes", help="Brief note about written authorization and scope")
-    parser.add_argument("-a", "--asset", help="Asset label or hostname (optional; not contacted)")
-    parser.add_argument("-P", "--port", type=int, help="Observed service port")
-    parser.add_argument("--protocol", help="Observed protocol, e.g. tcp, https, or ssh")
-    service_action = parser.add_argument(
+    observation = parser.add_argument_group("Observed service and asset details")
+    observation.add_argument("-n", "--assessment", help="Assessment or engagement name")
+    observation.add_argument("--scope-notes", help="Brief note about written authorization and scope")
+    observation.add_argument("-a", "--asset", help="Asset label or hostname (optional; not contacted)")
+    observation.add_argument("-P", "--port", type=int, help="Observed port (1-65535)")
+    observation.add_argument("--protocol", help="Observed transport/application protocol, e.g. tcp or https")
+    service_action = observation.add_argument(
         "-s", "--service", help="Detected service (tab-complete common services)"
     )
-    product_action = parser.add_argument(
+    product_action = observation.add_argument(
         "-p", "--product", help="Detected product (tab-complete common products)"
     )
-    vendor_action = parser.add_argument("-v", "--vendor", help="Product vendor")
-    parser.add_argument("-V", "--observed-version", "--version", dest="version", help="Observed version")
-    parser.add_argument("--build-number", dest="build", help="Observed build or patch level")
-    parser.add_argument("--platform", help="Operating system or platform")
-    parser.add_argument("--modules", help="Modules or relevant configuration")
-    parser.add_argument("--identified-by", help="How the service was identified")
-    parser.add_argument("-c", "--confidence", choices=("High", "Medium", "Low"), help="Confidence in the observation")
-    parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain", help="Report format (default: plain)")
-    parser.add_argument("--output", type=Path, help="Save a report to this local file")
-    parser.add_argument("--offline", action="store_true", help="Do not query public vulnerability sources")
-    parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
-    parser.add_argument("--limit", type=int, help="Maximum possible matches to report (default: all matches)")
-    parser.add_argument("--non-interactive", action="store_true", help="Do not prompt; fail if key inputs are missing")
+    vendor_action = observation.add_argument("-v", "--vendor", help="Product vendor")
+    observation.add_argument("-V", "--observed-version", "--version", dest="version", help="Observed version")
+    observation.add_argument("--build-number", dest="build", help="Observed build or patch level")
+    observation.add_argument("--platform", help="Operating system or platform")
+    observation.add_argument("--modules", help="Modules or relevant configuration")
+    observation.add_argument("--identified-by", help="How the observation was collected")
+    observation.add_argument("-c", "--confidence", choices=("High", "Medium", "Low"), help="Confidence in the observation")
+
+    output = parser.add_argument_group("Research and report options")
+    output.add_argument("--format", choices=("plain", "json", "markdown"), default="plain", help="Report format (default: plain)")
+    output.add_argument("--output", type=Path, help="Save the report to this local file")
+    output.add_argument("--offline", action="store_true", help="Skip public-source requests")
+    output.add_argument("--no-color", action="store_true", help="Disable color (also respects NO_COLOR)")
+    output.add_argument("--limit", type=int, help="Maximum possible matches to report (default: all matches)")
+    output.add_argument("--non-interactive", action="store_true", help="Do not prompt; fail if required input is missing")
     service_action.completer = ChoicesCompleter(SERVICE_TYPES)
     product_action.completer = ChoicesCompleter(PRODUCTS)
     vendor_action.completer = ChoicesCompleter(VENDORS)
@@ -86,6 +98,7 @@ def _services_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="emberstrike services",
         description="Show common service and product suggestions. The list is not exhaustive.",
+        epilog="Use -s to enter a service or -p to enter a product. Tab completion is available after shell setup; custom names are accepted.",
     )
     parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
     args = parser.parse_args(argv)
@@ -263,6 +276,7 @@ def _show_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="emberstrike show",
         description="Show public advisory details for one CVE. This command does not provide exploit instructions or contact a target.",
+        epilog="Displays severity, dates, affected versions, KEV status, remediation, primary links, and safe verification guidance.",
     )
     parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain")
     parser.add_argument("--output", type=Path, help="Save the advisory report locally")

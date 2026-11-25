@@ -11,7 +11,8 @@ The tool only contacts those public vulnerability-data services. It never connec
 Python 3.10 or later is required.
 
 ```bash
-cd vuln-research-cli
+git clone https://github.com/LordXapose/EmberStrike.git
+cd EmberStrike
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -85,6 +86,51 @@ emberstrike search -p <TAB>
 
 Completion suggests common names; custom service and product names remain accepted.
 
+## Command reference
+
+| Command | Purpose |
+| --- | --- |
+| `emberstrike` | Start an interactive assessment when run in a terminal. |
+| `emberstrike [OPTIONS]` | Research supplied observation details without prompts when required values are provided. |
+| `emberstrike search [OPTIONS]` | Run the same research flow with an explicit `search` command. |
+| `emberstrike services` | List common service types and product suggestions. This list is not exhaustive. |
+| `emberstrike show CVE-ID` | Retrieve public details for one CVE, including affected versions and remediation. |
+| `emberstrike COMMAND --help` | Show help and options for a command. |
+
+### Search options
+
+**Observation details**
+
+| Option | Meaning |
+| --- | --- |
+| `-n`, `--assessment` | Assessment or engagement name (required). |
+| `--scope-notes` | Brief note about written authorization and scope. |
+| `-a`, `--asset` | Optional asset label or hostname. EmberStrike does not contact it. |
+| `-P`, `--port` | Observed port, from 1 through 65535. |
+| `--protocol` | Observed protocol, such as TCP or HTTPS. |
+| `-s`, `--service` | Observed service or protocol; common values support Tab completion. |
+| `-p`, `--product` | Product name; common values support Tab completion. |
+| `-v`, `--vendor` | Product vendor; common values support Tab completion. |
+| `-V`, `--observed-version` | Observed product version. |
+| `--build-number` | Observed build or patch level. |
+| `--platform` | Operating system or platform. |
+| `--modules` | Modules or relevant configuration. |
+| `--identified-by` | How the observation was collected. |
+| `-c`, `--confidence` | Confidence in the observation: `High`, `Medium`, or `Low`. |
+
+**Research and report controls**
+
+| Option | Meaning |
+| --- | --- |
+| `--format` | Output as `plain`, `json`, or `markdown` (default: `plain`). |
+| `--output FILE` | Save the report locally; the report is also printed. |
+| `--offline` | Skip all public-source queries. |
+| `--no-color` | Disable terminal color; `NO_COLOR` is also respected. |
+| `--limit N` | Cap the number of possible matches (default: show all retrieved matches). |
+| `--non-interactive` | Do not prompt; return a clear error if required inputs are missing. |
+
+Run `emberstrike search --help` for the full search help. `show` accepts `--format`, `--output`, and `--no-color`; `services` accepts `--no-color`.
+
 ## How to read matches
 
 - **High / Medium / Low** describes how closely the supplied product/vendor/version details match the public record—not certainty about the host.
@@ -99,7 +145,8 @@ These are planned improvements, not features currently available. The order prio
 
 ### 1. Match accuracy
 
-- Improve CPE parsing, affected-version range handling, and deduplication. Exact product-name matching and broader NVD pagination are included in the initial Stage 1 work.
+- Initial Stage 1 work is implemented: exact product matching with a small explicit alias set, escaped-colon CPE parsing, and NVD pagination.
+- Continue improving affected-version range handling and deduplication.
 - Treat unfamiliar or vendor-specific versions conservatively; never infer that an unparseable version is affected.
 - Distinguish product match, version match, and host verification, and explain what evidence supports each confidence level.
 - Test ambiguous product names, vendor forks, backported fixes, missing versions, and conflicting evidence.
@@ -108,7 +155,6 @@ These are planned improvements, not features currently available. The order prio
 
 ### 2. Source reliability and completeness
 
-- Follow NVD pagination so large searches do not silently stop at the first page.
 - Add local caching with refresh controls and clear cache age indicators.
 - Avoid downloading the full CISA KEV catalog for each individual `show` lookup.
 - Distinguish source outages, rate limits, skipped/offline sources, and successful searches.
@@ -127,8 +173,7 @@ These are planned improvements, not features currently available. The order prio
 
 ### 4. CLI and reporting workflow
 
-- Improve subcommand help and make option placement consistent (`emberstrike search --help`, `emberstrike show --help`).
-- Refine interactive prompts, validation, and input review before lookup.
+- The command guide and command-specific help are implemented; continue refining interactive prompts, validation, and input review before lookup.
 - Add table sorting/filtering and concise versus detailed display modes.
 - Version the JSON report schema and add report timestamps and assessment metadata.
 - Keep the custom banner readable in narrow terminals and separate from machine-readable output.

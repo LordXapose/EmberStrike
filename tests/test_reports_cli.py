@@ -19,6 +19,10 @@ class InputTests(unittest.TestCase):
         help_text = build_parser().format_help()
         self.assertIn("EmberStrike", help_text)
         self.assertIn("LordXapose", help_text)
+        for command in ("search", "services", "show CVE-ID"):
+            self.assertIn(command, help_text)
+        self.assertIn("--scope-notes", help_text)
+        self.assertIn("--non-interactive", help_text)
         output = io.StringIO()
         render_banner(Console(file=output, no_color=True))
         self.assertIn("EmberStrike", output.getvalue())
