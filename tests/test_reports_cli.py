@@ -18,7 +18,11 @@ from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
 from vuln_research.reports import advisory_to_plain, to_json, to_markdown, to_plain
 from vuln_research.research import filter_report_severity, run_research
-from vuln_research.selectable_table import build_results_table, build_detail_tables
+from vuln_research.selectable_table import (
+    build_detail_tables,
+    build_results_table,
+    random_palette,
+)
 from rich.console import Console
 from unittest.mock import patch
 
@@ -134,21 +138,44 @@ class InputTests(unittest.TestCase):
         )
         results = build_results_table(report, selected_index=0, width=100)
         self.assertEqual(results.title, "Possible Vulnerability Matches")
-        self.assertEqual(results.border_style, "white")
-        self.assertEqual(results.header_style, "bold white")
+        self.assertRegex(results.border_style, r"^#[0-9a-f]{6}$")
+        self.assertRegex(results.header_style, r"^bold #[0-9a-f]{6}$")
         self.assertFalse(results.show_lines)
         self.assertEqual(
             [column.header for column in results.columns],
             ["", "Vulnerability Name", "CVE", "Published", "Severity"],
         )
-        self.assertEqual(results.rows[0].style, "bold green")
+        self.assertRegex(results.rows[0].style, r"^bold #[0-9a-f]{6}$")
         details, links = build_detail_tables(advisory, width=100)
         self.assertEqual(details.title, "Details for CVE-2099-0015")
         self.assertEqual(links.title, "Source Links")
         for table in (details, links):
-            self.assertEqual(table.border_style, "white")
-            self.assertEqual(table.header_style, "bold white")
+            self.assertRegex(table.border_style, r"^#[0-9a-f]{6}$")
+            self.assertRegex(table.header_style, r"^bold #[0-9a-f]{6}$")
             self.assertFalse(table.show_lines)
+        palette = random_palette()
+        self.assertEqual(len(set(palette.values())), len(palette))
+        self.assertTrue(all(re.fullmatch(r"#[0-9a-f]{6}", color) for color in palette.values()))
+
+    def test_random_rgb_table_colors_respect_no_color(self):
+        report = ResearchReport(
+            AssetObservation(assessment="Q4", product="Tomcat"),
+            [PossibleMatch(Advisory("CVE-2099-0015", "Selectable example"), "High", [], [], [])],
+        )
+        table = build_results_table(report)
+        colored_output = io.StringIO()
+        Console(
+            file=colored_output,
+            force_terminal=True,
+            color_system="truecolor",
+            no_color=False,
+            highlight=False,
+        ).print(table)
+        self.assertIn("38;2;", colored_output.getvalue())
+
+        plain_output = io.StringIO()
+        Console(file=plain_output, force_terminal=True, no_color=True, highlight=False).print(table)
+        self.assertNotIn("38;2;", plain_output.getvalue())
 
     def test_default_search_hides_low_severity_and_include_low_restores_it(self):
         low_advisory = Advisory(

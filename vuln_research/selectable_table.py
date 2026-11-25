@@ -1,3 +1,4 @@
+import random
 import shutil
 from io import StringIO
 
@@ -14,20 +15,41 @@ from rich.table import Table
 from .models import Advisory, ResearchReport
 
 
-def build_results_table(report: ResearchReport, selected_index: int = -1, width: int = 100) -> Table:
+def random_palette() -> dict[str, str]:
+    generator = random.SystemRandom()
+    keys = (
+        "border", "header", "title", "marker", "name", "cve",
+        "published", "severity", "detail_name", "detail_value", "link",
+        "selected",
+    )
+    colors = set()
+    while len(colors) < len(keys):
+        red, green, blue = (generator.randint(145, 255) for _ in range(3))
+        colors.add(f"#{red:02x}{green:02x}{blue:02x}")
+    return dict(zip(keys, colors))
+
+
+def build_results_table(
+    report: ResearchReport,
+    selected_index: int = -1,
+    width: int = 100,
+    palette: dict[str, str] | None = None,
+) -> Table:
+    palette = palette or random_palette()
     table = Table(
         title="Possible Vulnerability Matches",
-        border_style="white",
-        header_style="bold white",
+        border_style=palette["border"],
+        header_style=f"bold {palette['header']}",
+        title_style=f"bold {palette['title']}",
         show_lines=False,
         box=box.ASCII,
         width=width,
     )
-    table.add_column("", width=2, style="green", no_wrap=True)
-    table.add_column("Vulnerability Name", style="white", max_width=max(18, width - 72))
-    table.add_column("CVE", style="cyan", no_wrap=True)
-    table.add_column("Published", style="white", no_wrap=True)
-    table.add_column("Severity", style="white", no_wrap=True)
+    table.add_column("", width=2, style=palette["marker"], no_wrap=True)
+    table.add_column("Vulnerability Name", style=palette["name"], max_width=max(18, width - 72))
+    table.add_column("CVE", style=palette["cve"], no_wrap=True)
+    table.add_column("Published", style=palette["published"], no_wrap=True)
+    table.add_column("Severity", style=palette["severity"], no_wrap=True)
     for index, match in enumerate(report.matches):
         table.add_row(
             ">" if index == selected_index else "",
@@ -35,7 +57,7 @@ def build_results_table(report: ResearchReport, selected_index: int = -1, width:
             match.advisory.cve_id,
             match.advisory.published[:10] if match.advisory.published else "Unknown",
             match.advisory.severity,
-            style="bold green" if index == selected_index else "",
+            style=f"bold {palette['selected']}" if index == selected_index else "",
         )
     if not report.matches:
         table.add_row("", "No matches at selected severity", "-", "-", "-")
@@ -52,17 +74,23 @@ def _source_name(advisory: Advisory, link: str) -> str:
     return "Source record"
 
 
-def build_detail_tables(advisory: Advisory, width: int = 100) -> tuple[Table, Table]:
+def build_detail_tables(
+    advisory: Advisory,
+    width: int = 100,
+    palette: dict[str, str] | None = None,
+) -> tuple[Table, Table]:
+    palette = palette or random_palette()
     details = Table(
         title=f"Details for {advisory.cve_id}",
-        border_style="white",
-        header_style="bold white",
+        border_style=palette["border"],
+        header_style=f"bold {palette['header']}",
+        title_style=f"bold {palette['title']}",
         show_lines=False,
         box=box.ASCII,
         width=width,
     )
-    details.add_column("Name", style="white", no_wrap=True)
-    details.add_column("Information", style="white", max_width=max(20, width - 32))
+    details.add_column("Name", style=palette["detail_name"], no_wrap=True)
+    details.add_column("Information", style=palette["detail_value"], max_width=max(20, width - 32))
     details.add_row("Vulnerability", " ".join(advisory.title.split())[:120])
     details.add_row("Severity", advisory.severity)
     details.add_row("Published", advisory.published[:10] or "Unknown")
@@ -77,14 +105,15 @@ def build_detail_tables(advisory: Advisory, width: int = 100) -> tuple[Table, Ta
 
     links = Table(
         title="Source Links",
-        border_style="white",
-        header_style="bold white",
+        border_style=palette["border"],
+        header_style=f"bold {palette['header']}",
+        title_style=f"bold {palette['title']}",
         show_lines=False,
         box=box.ASCII,
         width=width,
     )
-    links.add_column("Name", style="white", no_wrap=True)
-    links.add_column("Link", style="cyan", max_width=max(24, width - 24))
+    links.add_column("Name", style=palette["detail_name"], no_wrap=True)
+    links.add_column("Link", style=palette["link"], max_width=max(24, width - 24))
     source_links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
     for link in source_links[:6]:
         links.add_row(_source_name(advisory, link), link)
@@ -101,7 +130,7 @@ def _render_ansi(renderables, width: int, no_color: bool) -> str:
         file=output,
         width=width,
         force_terminal=True,
-        color_system=None if no_color else "standard",
+        color_system=None if no_color else "truecolor",
         no_color=no_color,
         highlight=False,
     )
@@ -115,6 +144,7 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
         return
     width, height = shutil.get_terminal_size((100, 24))
     width = max(80, width)
+    palette = random_palette()
     state = {"selected": 0, "details": False}
     bindings = KeyBindings()
 
@@ -154,6 +184,7 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
             details, links = build_detail_tables(
                 report.matches[state["selected"]].advisory,
                 width=width,
+                palette=palette,
             )
             footer = "Escape or Backspace: results | Q: quit"
             renderables = [details, links, footer]
@@ -167,7 +198,7 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
                 hidden_severity_matches=report.hidden_severity_matches,
             )
             local_index = state["selected"] - page_start
-            table = build_results_table(paged_report, local_index, width=width)
+            table = build_results_table(paged_report, local_index, width=width, palette=palette)
             footer = [
                 f"Rows {page_start + 1}-{page_end} of {len(report.matches)}",
                 "Up/Down: move | Enter: details | Q: quit",

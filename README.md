@@ -1,10 +1,124 @@
 # EmberStrike
 
-**Developer: LordXapose**
+**Safe vulnerability research and reporting for authorized assessments.**
 
-A research and reporting assistant for **authorized** assessments. It compares service details you already observed with public NVD and CISA Known Exploited Vulnerabilities (KEV) records. Every result is labeled a **possible match**; a banner, product name, or version alone does not establish that a host is vulnerable.
+![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB)
+![Rich terminal UI](https://img.shields.io/badge/Terminal%20UI-Rich-7B2CBF)
+![Tests](https://img.shields.io/badge/Tests-unittest-2E8B57)
+![Safety](https://img.shields.io/badge/Target%20scanning-Not%20supported-228B22)
 
-The tool only contacts those public vulnerability-data services. It never connects to, scans, or sends requests to an assessed asset, and it does not generate exploit payloads. Assessment data stays local unless you explicitly save a report. **Stay within your written authorization and scope. No credentials or secrets are needed.**
+**Developer: [LordXapose](https://github.com/LordXapose)**
+
+EmberStrike compares service details you already observed with public NVD and CISA Known Exploited Vulnerabilities (KEV) records. Every result is a **possible match**; a banner, product name, or version alone does not establish that a host is vulnerable.
+
+The tool only contacts public vulnerability-data sources. It never connects to or scans an assessed asset and does not generate exploit payloads. Online searches send the vendor/product or service keyword to NVD; `show` sends the requested CVE ID to NVD, and the CISA KEV catalog is fetched. The full observation and saved report are not uploaded. **Use only within written authorization and scope. No credentials or secrets are needed.**
+
+---
+
+## Contents
+
+- [Project overview](#project-overview)
+- [Interface previews](#interface-previews)
+- [Architecture and data flow](#architecture-and-data-flow)
+- [Project structure](#project-structure)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Tab completion](#tab-completion)
+- [Command reference](#command-reference)
+- [How to read matches](#how-to-read-matches)
+- [Privacy and safety](#privacy-and-safety)
+- [Roadmap](#roadmap)
+- [Development and tests](#development-and-tests)
+
+## Project overview
+
+| Area | Details |
+|---|---|
+| Purpose | Research public vulnerability records against service and product observations |
+| Public sources | NVD CVE records and CISA KEV catalog |
+| Interface | Interactive terminal prompts, compact Rich tables, and selectable result rows |
+| Output | Plain text, JSON, or Markdown; reports can be saved locally |
+| Offline support | `--offline` skips public-source lookups |
+| Safety boundary | No target scanning, target requests, exploit payloads, or credentials |
+
+### Main capabilities
+
+- Search using an observed service or product, vendor, version, build, platform, modules, and confidence.
+- Browse suggested service/product names and complete common values with Tab after shell setup.
+- Review a compact table showing advisory name, CVE, publication date, and severity.
+- Use Up/Down and Enter in an interactive terminal to select a result and view its details and source links.
+- View a CVE directly with `emberstrike show CVE-ID`.
+- Export plain, JSON, or Markdown reports; use `--include-low` to show Low and unscored severity results.
+- See source outages and rate limits as notices rather than invented or success-shaped results.
+
+### Technology stack
+
+| Component | Technology | Use |
+|---|---|---|
+| Runtime | Python 3.10+ | CLI and research logic |
+| Terminal tables | Rich | Colored tables and readable terminal output |
+| Interactive selection | prompt-toolkit | Arrow-key navigation and keyboard controls |
+| Shell completion | argcomplete | Service, product, and vendor suggestions |
+| Version handling | packaging | Compare interpretable version strings |
+| Unit tests | unittest | Input, matching, source parsing, and report behavior |
+| Vulnerability data | NVD and CISA KEV | Public CVE and known-exploited records |
+
+## Interface previews
+
+The terminal image below is an **illustrative UI mockup**. Its placeholders are not CVE records or live research results.
+
+![EmberStrike compact terminal table preview; placeholder values only](docs/images/emberstrike-terminal-preview.svg)
+
+## Architecture and data flow
+
+EmberStrike never sends requests to the assessed system. In online mode, it sends the NVD search keyword or requested CVE ID to NVD and fetches the public CISA KEV catalog. It does not upload the full observation or generated report; reports are written to disk only when requested with `--output`.
+
+![EmberStrike research data flow showing public-source queries and no target connection](docs/images/emberstrike-data-flow.svg)
+
+| Component | Responsibility |
+|---|---|
+| CLI and prompts | Collect observations, validate inputs, and route commands |
+| Matching | Compare supplied product/version evidence with public advisory data |
+| NVD adapter | Retrieve and parse public CVE records |
+| CISA KEV adapter | Identify CVEs listed in CISA's Known Exploited Vulnerabilities catalog |
+| Report formatters | Render plain text, JSON, and Markdown |
+| Rich table UI | Display compact results and interactive selection in a terminal |
+
+## Project structure
+
+```text
+EmberStrike/
+├── .gitignore
+├── README.md
+├── pyproject.toml               # Package metadata, dependencies, and emberstrike command
+├── requirements.txt             # Runtime dependency list
+├── docs/
+│   └── images/                  # README diagrams and terminal UI preview
+│       ├── emberstrike-data-flow.svg
+│       └── emberstrike-terminal-preview.svg
+├── tests/
+│   ├── test_matching.py         # Product/version matching behavior
+│   ├── test_reports_cli.py      # Inputs, CLI commands, tables, and report formats
+│   └── test_sources.py          # Public-source parsing and pagination
+└── vuln_research/
+    ├── __init__.py
+    ├── __main__.py              # python -m vuln_research entry point
+    ├── banner.py                # Terminal banner
+    ├── catalog.py               # Suggested products, services, and vendors
+    ├── cli.py                   # CLI arguments, prompts, commands, and rendering
+    ├── matching.py              # Advisory-to-observation matching
+    ├── models.py                # Observation, advisory, and report data models
+    ├── reports.py               # Plain, JSON, and Markdown serialization
+    ├── research.py              # Source orchestration and severity filtering
+    ├── selectable_table.py      # Rich tables and keyboard navigation
+    └── sources/
+        ├── __init__.py
+        ├── base.py              # Public-source HTTP and error handling
+        ├── cisa_kev.py          # CISA KEV integration
+        └── nvd.py               # NVD CVE integration
+```
+
+The test suite uses Python's built-in `unittest` runner. The source adapters are separated from matching, reporting, and terminal rendering so integrations can be maintained independently.
 
 ## Install
 
@@ -143,6 +257,16 @@ Run `emberstrike search --help` for the full search help. `show` accepts `--form
 - CISA KEV status is shown only when the CVE appears in that catalog. Source outages, rate limits, and offline use are reported without fabricating records.
 - Safe verification means checking an approved inventory or vendor-supported, non-invasive method. This tool provides no exploit steps.
 
+## Privacy and safety
+
+- Use EmberStrike only for assessments covered by your written authorization and scope.
+- Enter only service details that you are authorized to assess; never enter credentials or secrets.
+- The tool makes no connection to an assessed hostname or IP address.
+- Online `search` sends the vendor/product or service keyword to NVD. `show` sends the requested CVE ID to NVD; both commands fetch the CISA KEV catalog. Use `--offline` to skip public-source requests for a search.
+- Other observation fields and generated reports are not uploaded; reports are stored locally only when you request `--output`.
+- Results are possible matches, not proof that a system is vulnerable. Confirm with authoritative inventory and vendor guidance.
+- No exploit payloads, target-scanning features, or instructions for gaining access are provided.
+
 ## Roadmap
 
 These are planned improvements, not features currently available. The order prioritizes match reliability before adding more data and workflows.
@@ -211,10 +335,12 @@ These are planned improvements, not features currently available. The order prio
 
 EmberStrike will remain a research and reporting assistant: no target scanning, exploit payloads, proof-of-concept execution, or instructions for gaining access.
 
-## Development
+## Development and tests
 
-Run the focused unit tests:
+Run the unit tests from the project root:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+The tests cover input handling, product/version matching, public-source parsing, CLI rendering, and report formats. They do not require sending requests to an assessed asset.

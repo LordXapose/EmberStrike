@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="500" viewBox="0 0 1120 500" role="img" aria-labelledby="title description">
+  <title id="title">EmberStrike terminal interface preview</title>
+  <desc id="description">Illustrative terminal mockup showing the compact vulnerability results table. All row values are placeholders, not vulnerability data.</desc>
+  <rect width="1120" height="500" rx="18" fill="#10131a"/>
+  <path d="M18 0h1084a18 18 0 0 1 18 18v48H0V18A18 18 0 0 1 18 0Z" fill="#1b202b"/>
+  <circle cx="30" cy="33" r="7" fill="#ff6b6b"/>
+  <circle cx="54" cy="33" r="7" fill="#ffd166"/>
+  <circle cx="78" cy="33" r="7" fill="#06d6a0"/>
+  <text x="560" y="39" text-anchor="middle" fill="#d8dee9" font-family="monospace" font-size="16">EmberStrike | possible vulnerability matches</text>
+
+  <text x="42" y="111" fill="#76e4f7" font-family="monospace" font-size="17">$ emberstrike search -n "Example review" -s HTTPS -p "Example Product"</text>
+  <text x="42" y="154" fill="#f3f5f7" font-family="monospace" font-size="23" font-weight="bold">POSSIBLE VULNERABILITY MATCHES</text>
+
+  <rect x="40" y="177" width="1040" height="218" rx="7" fill="#141922" stroke="#52d6c7" stroke-width="2"/>
+  <path d="M40 226h1040M40 282h1040M40 338h1040" stroke="#343c49" stroke-width="1"/>
+  <path d="M535 177v218M790 177v218M945 177v218" stroke="#343c49" stroke-width="1"/>
+  <rect x="41" y="178" width="1038" height="47" fill="#202734"/>
+
+  <g font-family="monospace" font-size="15" font-weight="bold" fill="#f3f5f7">
+    <text x="60" y="207">VULNERABILITY NAME</text>
+    <text x="550" y="207">CVE</text>
+    <text x="805" y="207">PUBLISHED</text>
+    <text x="960" y="207">SEVERITY</text>
+  </g>
+  <g font-family="monospace" font-size="15">
+    <text x="60" y="261" fill="#ff9ecb">Example advisory A</text>
+    <text x="550" y="261" fill="#9ecbff">CVE-YYYY-NNNN</text>
+    <text x="805" y="261" fill="#ffe08a">YYYY-MM-DD</text>
+    <text x="960" y="261" fill="#ff9e9e">HIGH</text>
+    <text x="60" y="317" fill="#9ee6b2">Example advisory B</text>
+    <text x="550" y="317" fill="#d0a8ff">CVE-YYYY-NNNN</text>
+    <text x="805" y="317" fill="#a6e3e9">YYYY-MM-DD</text>
+    <text x="960" y="317" fill="#ffd28a">MEDIUM</text>
+    <text x="60" y="373" fill="#b9c3d0">Example advisory C</text>
+    <text x="550" y="373" fill="#b9c3d0">CVE-YYYY-NNNN</text>
+    <text x="805" y="373" fill="#b9c3d0">YYYY-MM-DD</text>
+    <text x="960" y="373" fill="#b9c3d0">MEDIUM</text>
+  </g>
+  <text x="42" y="434" fill="#aeb8c7" font-family="monospace" font-size="14">Up/Down: select row | Enter: details | Q: quit</text>
+  <text x="42" y="466" fill="#52d6c7" font-family="monospace" font-size="14">Possible matches only; no requests are sent to the assessed asset.</text>
+  <rect x="683" y="415" width="397" height="41" rx="5" fill="#332b1a" stroke="#ffd166"/>
+  <text x="881" y="440" text-anchor="middle" fill="#ffe08a" font-family="monospace" font-size="12" font-weight="bold">UI MOCKUP — PLACEHOLDERS, NOT LIVE RESULTS</text>
+</svg>

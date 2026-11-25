@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="390" viewBox="0 0 1120 390" role="img" aria-labelledby="title description">
+  <title id="title">EmberStrike safe research data flow</title>
+  <desc id="description">Observed service details are compared with public NVD and CISA KEV data. Reports are saved locally. EmberStrike does not connect to the assessed asset.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#82d8ce"/>
+    </marker>
+    <marker id="noarrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#ff8585"/>
+    </marker>
+  </defs>
+  <rect width="1120" height="390" rx="18" fill="#10131a"/>
+  <text x="44" y="52" fill="#f3f5f7" font-family="sans-serif" font-size="24" font-weight="bold">How EmberStrike handles assessment data</text>
+
+  <g font-family="sans-serif">
+    <rect x="44" y="99" width="225" height="104" rx="12" fill="#1c2531" stroke="#9ecbff" stroke-width="2"/>
+    <text x="156" y="137" text-anchor="middle" fill="#9ecbff" font-size="17" font-weight="bold">OBSERVED DETAILS</text>
+    <text x="156" y="166" text-anchor="middle" fill="#e1e7ef" font-size="14">Product, version, service</text>
+    <text x="156" y="188" text-anchor="middle" fill="#aeb8c7" font-size="13">Entered by the user; local</text>
+
+    <rect x="344" y="99" width="225" height="104" rx="12" fill="#1c2531" stroke="#52d6c7" stroke-width="2"/>
+    <text x="456" y="137" text-anchor="middle" fill="#52d6c7" font-size="17" font-weight="bold">EMBERSTRIKE</text>
+    <text x="456" y="166" text-anchor="middle" fill="#e1e7ef" font-size="14">Match and explain evidence</text>
+    <text x="456" y="188" text-anchor="middle" fill="#aeb8c7" font-size="13">Possible matches, not proof</text>
+
+    <rect x="692" y="74" width="180" height="72" rx="12" fill="#1c2531" stroke="#d0a8ff" stroke-width="2"/>
+    <text x="782" y="105" text-anchor="middle" fill="#d0a8ff" font-size="17" font-weight="bold">NVD</text>
+    <text x="782" y="128" text-anchor="middle" fill="#e1e7ef" font-size="13">Public CVE records</text>
+
+    <rect x="692" y="157" width="180" height="72" rx="12" fill="#1c2531" stroke="#ffd166" stroke-width="2"/>
+    <text x="782" y="188" text-anchor="middle" fill="#ffd166" font-size="17" font-weight="bold">CISA KEV</text>
+    <text x="782" y="211" text-anchor="middle" fill="#e1e7ef" font-size="13">Known exploited catalog</text>
+
+    <rect x="922" y="99" width="154" height="104" rx="12" fill="#1c2531" stroke="#9ee6b2" stroke-width="2"/>
+    <text x="999" y="137" text-anchor="middle" fill="#9ee6b2" font-size="17" font-weight="bold">REPORT</text>
+    <text x="999" y="166" text-anchor="middle" fill="#e1e7ef" font-size="14">Plain / JSON / MD</text>
+    <text x="999" y="188" text-anchor="middle" fill="#aeb8c7" font-size="13">Saved locally on request</text>
+  </g>
+
+  <path d="M269 151h63M569 129h111M569 174h111M872 151h40" fill="none" stroke="#82d8ce" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="619" y="249" text-anchor="middle" fill="#aeb8c7" font-family="sans-serif" font-size="13">Public-source requests only</text>
+
+  <rect x="344" y="282" width="225" height="66" rx="12" fill="#251b20" stroke="#ff8585" stroke-width="2"/>
+  <text x="456" y="309" text-anchor="middle" fill="#ff9e9e" font-family="sans-serif" font-size="15" font-weight="bold">ASSESSED ASSET</text>
+  <text x="456" y="331" text-anchor="middle" fill="#e1e7ef" font-family="sans-serif" font-size="13">Never contacted or scanned</text>
+  <path d="M456 203v63" fill="none" stroke="#ff8585" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#noarrow)"/>
+  <path d="m443 234 26 26m0-26-26 26" stroke="#ff8585" stroke-width="4" stroke-linecap="round"/>
+</svg>

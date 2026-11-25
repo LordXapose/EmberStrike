@@ -25,7 +25,12 @@ from .reports import (
     to_plain,
 )
 from .research import filter_report_severity, run_research
-from .selectable_table import build_detail_tables, build_results_table, run_selectable_table
+from .selectable_table import (
+    build_detail_tables,
+    build_results_table,
+    random_palette,
+    run_selectable_table,
+)
 from .sources import cisa_kev, nvd
 from .sources.base import SourceError
 
@@ -110,9 +115,17 @@ def _services_main(argv: list[str]) -> int:
     console = Console(no_color=args.no_color or "NO_COLOR" in os.environ, highlight=False)
     if sys.stdout.isatty():
         render_banner(console)
-    table = Table(title="COMMON SERVICE AND PRODUCT SUGGESTIONS", box=box.SIMPLE_HEAVY)
-    table.add_column("Service types (-s)", style="cyan")
-    table.add_column("Products (-p)", style="green")
+    palette = random_palette()
+    table = Table(
+        title="COMMON SERVICE AND PRODUCT SUGGESTIONS",
+        border_style=palette["border"],
+        header_style=f"bold {palette['header']}",
+        title_style=f"bold {palette['title']}",
+        show_lines=False,
+        box=box.ASCII,
+    )
+    table.add_column("Service types (-s)", style=palette["name"])
+    table.add_column("Products (-p)", style=palette["cve"])
     rows = max(len(SERVICE_TYPES), len(PRODUCTS))
     for index in range(rows):
         table.add_row(
@@ -187,8 +200,16 @@ def _render_rich(report, console: Console):
     if report.offline:
         console.print("[dim]Offline mode: no public sources queried.[/]")
     if report.source_warnings:
-        notices = Table(title="Source notices", box=box.SIMPLE)
-        notices.add_column("Source")
+        palette = random_palette()
+        notices = Table(
+            title="Source notices",
+            border_style=palette["border"],
+            header_style=f"bold {palette['header']}",
+            title_style=f"bold {palette['title']}",
+            show_lines=False,
+            box=box.ASCII,
+        )
+        notices.add_column("Source", style=palette["detail_value"])
         for warning in report.source_warnings:
             notices.add_row(warning)
         console.print(notices)
