@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from vuln_research.cli import build_parser, main, render_banner, _observation, _render_rich
+from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
 from vuln_research.reports import to_json, to_markdown, to_plain
 from rich.console import Console
@@ -21,6 +22,7 @@ class InputTests(unittest.TestCase):
         render_banner(Console(file=output, no_color=True))
         self.assertIn("EmberStrike", output.getvalue())
         self.assertIn("LordXapose", output.getvalue())
+        self.assertIn(BANNER.splitlines()[1], output.getvalue())
 
     def test_search_subcommand_works_with_flags(self):
         stdout, stderr = io.StringIO(), io.StringIO()

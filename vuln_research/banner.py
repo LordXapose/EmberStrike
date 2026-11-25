@@ -1,0 +1,15 @@
+BANNER = "\n".join((
+    r",;                                       ,;                    .                         G:              ,;",
+    r"        f#i                      .               f#i j.                 ;W          j.         t   E#,    :      f#i",
+    r"      .E#t            ..       : Ef.           .E#t  EW,               f#E GEEEEEEELEW,        Ej  E#t  .GE    .E#t",
+    r"     i#W,            ,W,     .Et E#Wi         i#W,   E##j            .E#f  ,;;L#K;;.E##j       E#, E#t j#K;   i#W,",
+    r"    L#D.            t##,    ,W#t E#K#D:      L#D.    E###D.         iWW;      t#E   E###D.     E#t E#GK#f    L#D.",
+    r"  :K#Wfff;         L###,   j###t E#t,E#f.  :K#Wfff;  E#jG#W;       L##Lffi    t#E   E#jG#W;    E#t E##D.   :K#Wfff;",
+    r"  i##WLLLLt      .E#j##,  G#fE#t E#WEE##Wt i##WLLLLt E#t t##f     tLLG##L     t#E   E#t t##f   E#t E##Wi   i##WLLLLt",
+    r"   .E#L         ;WW; ##,:K#i E#t E##Ei;;;;. .E#L     E#t  :K#E:     ,W#i      t#E   E#t  :K#E: E#t E#jL#D:  .E#L",
+    r"     f#E:      j#E.  ##f#W,  E#t E#DWWt       f#E:   E#KDDDD###i   j#E.       t#E   E#KDDDD###iE#t E#t ,K#j   f#E:",
+    r"      ,WW;   .D#L    ###K:   E#t E#t f#K;      ,WW;  E#f,t#Wi,,, .D#j         t#E   E#f,t#Wi,,,E#t E#t   jD    ,WW;",
+    r"       .D#; :K#t     ##D.    E#t E#Dfff##E,    .D#;  E#t  ;#W:  ,WK,          t#E   E#t  ;#W:  E#t j#t          .D#;",
+    r"         tt ...      #G      ..  jLLLLLLLLL;      tt DWi   ,KK: EG.            fE   DWi   ,KK: E#t  ,;            tt",
+    r"                     j                                          ,               :              ,;",
+))

@@ -10,8 +10,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
+from rich.text import Text
 
 from .models import Advisory, AssetObservation
+from .banner import BANNER
 from .reports import (
     advisory_to_json,
     advisory_to_markdown,
@@ -70,13 +72,15 @@ EmberStrike | Developer: LordXapose""",
 
 
 def render_banner(console: Console) -> None:
-    console.print(Panel.fit(
-        "[bold bright_red]EmberStrike[/]\n"
-        "[dim]Authorized Vulnerability Research[/]\n"
-        "[bold cyan]Developer:[/] LordXapose",
-        border_style="bright_red",
-        padding=(0, 3),
-    ))
+    console.print("[bold bright_red]EmberStrike[/]")
+    banner_width = max(len(line) for line in BANNER.splitlines())
+    console.print(
+        Text(BANNER, no_wrap=True),
+        width=banner_width,
+        overflow="ignore",
+        crop=False,
+    )
+    console.print("[bold cyan]Developer:[/] LordXapose\n")
 
 
 def _observation(args, console: Console, interactive: bool) -> AssetObservation:
