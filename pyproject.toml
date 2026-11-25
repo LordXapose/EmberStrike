@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emberstrike"
+version = "0.1.0"
+description = "A safe, evidence-based assistant for public vulnerability research"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "LordXapose" }]
+dependencies = [
+  "rich>=13.7,<15",
+  "packaging>=23.2",
+]
+
+[project.scripts]
+emberstrike = "vuln_research.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vuln_research*"]
