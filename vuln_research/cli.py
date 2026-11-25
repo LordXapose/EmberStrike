@@ -25,7 +25,7 @@ from .reports import (
     to_plain,
 )
 from .research import filter_report_severity, run_research
-from .selectable_table import run_selectable_table
+from .selectable_table import build_results_table, run_selectable_table
 from .sources import cisa_kev, nvd
 from .sources.base import SourceError
 
@@ -177,22 +177,7 @@ def _observation(args, console: Console, interactive: bool) -> AssetObservation:
 
 
 def _render_rich(report, console: Console):
-    summary = Table(title="POSSIBLE VULNERABILITIES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
-    summary.add_column("Vulnerability name", max_width=42, no_wrap=True, overflow="ellipsis")
-    summary.add_column("CVE", style="cyan", no_wrap=True)
-    summary.add_column("Published", no_wrap=True)
-    summary.add_column("Severity", no_wrap=True)
-    if report.matches:
-        for match in report.matches:
-            summary.add_row(
-                " ".join(match.advisory.title.split()),
-                match.advisory.cve_id,
-                match.advisory.published[:10] if match.advisory.published else "Unavailable",
-                match.advisory.severity,
-            )
-    else:
-        summary.add_row("No matches at selected severity", "-", "-", "-")
-    console.print(summary)
+    console.print(build_results_table(report, width=console.width))
     console.print("[dim]Possible matches only; no requests were sent to the assessed asset.[/]")
     if report.hidden_severity_matches:
         console.print(
@@ -210,38 +195,8 @@ def _render_rich(report, console: Console):
 
 
 def _render_advisory(advisory: Advisory, source_warnings: list[str], console: Console) -> None:
-    details = Table(title="CVE DETAILS", box=box.SIMPLE_HEAVY)
-    details.add_column("Name")
-    details.add_column("Information", max_width=88)
-    details.add_row("CVE", advisory.cve_id)
-    details.add_row("Vulnerability name", " ".join(advisory.title.split())[:120])
-    details.add_row("Severity", advisory.severity)
-    details.add_row("Published", advisory.published[:10] or "Unknown")
-    details.add_row("Updated", advisory.updated[:10] or "Unknown")
-    details.add_row("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed")
-    affected = [item.label() for item in advisory.affected[:3]]
-    if len(advisory.affected) > len(affected):
-        affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD record")
-    details.add_row("Affected ranges", "; ".join(affected) or "See linked advisory")
-    remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
-    details.add_row("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else ""))
+    details, links = build_detail_tables(advisory, width=console.width)
     console.print(details)
-
-    links = Table(title="SOURCE LINKS", box=box.SIMPLE_HEAVY)
-    links.add_column("Name")
-    links.add_column("Link", max_width=88)
-    for link in list(dict.fromkeys(advisory.vendor_advisories + advisory.references)):
-        if "nvd.nist.gov" in link:
-            label = "NVD record"
-        elif "cisa.gov" in link:
-            label = "CISA KEV"
-        elif link in advisory.vendor_advisories:
-            label = "Vendor advisory"
-        else:
-            label = "Source record"
-        links.add_row(label, link)
-    if not links.row_count:
-        links.add_row("Unavailable", "No source links")
     console.print(links)
     console.print("[dim]Public advisory only; verify installed versions using an authorized inventory.[/]")
     for warning in source_warnings:

@@ -17,7 +17,7 @@ from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
 from vuln_research.reports import advisory_to_plain, to_json, to_markdown, to_plain
 from vuln_research.research import filter_report_severity, run_research
-from vuln_research.selectable_table import _format_screen
+from vuln_research.selectable_table import build_results_table, build_detail_tables
 from rich.console import Console
 from unittest.mock import patch
 
@@ -118,18 +118,23 @@ class InputTests(unittest.TestCase):
             AssetObservation(assessment="Q4", product="Tomcat"),
             [match],
         )
-        list_fragments = _format_screen(report, 0, False, 100, 24)
-        list_text = "".join(text for _, text in list_fragments)
-        self.assertIn("+", list_text)
-        self.assertIn("Vulnerability name", list_text)
-        self.assertIn("CVE-2099-0015", list_text)
-        self.assertIn("Enter to view details", list_text)
-        self.assertTrue(any(style == "class:selected" for style, _ in list_fragments))
-        detail_fragments = _format_screen(report, 0, True, 100, 24)
-        detail_text = "".join(text for _, text in detail_fragments)
-        self.assertIn("CVE DETAILS", detail_text)
-        self.assertIn("SOURCE LINKS", detail_text)
-        self.assertIn("Escape or Backspace", detail_text)
+        results = build_results_table(report, selected_index=0, width=100)
+        self.assertEqual(results.title, "Possible Vulnerability Matches")
+        self.assertEqual(results.border_style, "white")
+        self.assertEqual(results.header_style, "bold white")
+        self.assertFalse(results.show_lines)
+        self.assertEqual(
+            [column.header for column in results.columns],
+            ["", "Vulnerability Name", "CVE", "Published", "Severity"],
+        )
+        self.assertEqual(results.rows[0].style, "bold green")
+        details, links = build_detail_tables(advisory, width=100)
+        self.assertEqual(details.title, "Details for CVE-2099-0015")
+        self.assertEqual(links.title, "Source Links")
+        for table in (details, links):
+            self.assertEqual(table.border_style, "white")
+            self.assertEqual(table.header_style, "bold white")
+            self.assertFalse(table.show_lines)
 
     def test_default_search_hides_low_severity_and_include_low_restores_it(self):
         low_advisory = Advisory(
@@ -266,7 +271,7 @@ class ReportTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, no_color=True, width=120)
         _render_rich(self.report, console)
-        self.assertIn("POSSIBLE VULNERABILITIES", output.getvalue())
+        self.assertIn("Possible Vulnerability Matches", output.getvalue())
         self.assertIn("CVE-2099-1234", output.getvalue())
         self.assertIn("Published", output.getvalue())
         self.assertNotIn("Missing evidence", output.getvalue())

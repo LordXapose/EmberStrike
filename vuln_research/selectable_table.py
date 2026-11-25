@@ -1,43 +1,45 @@
-import os
 import shutil
+from io import StringIO
 
 from prompt_toolkit.application import Application
+from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.containers import Window
-from prompt_toolkit.styles import Style
+from rich import box
+from rich.console import Console
+from rich.table import Table
 
 from .models import Advisory, ResearchReport
 
 
-def _clip(value: str, width: int) -> str:
-    value = " ".join(value.split())
-    if len(value) > width:
-        return value[:max(0, width - 3)] + ("..." if width >= 3 else "")
-    return value
-
-
-def _border(widths: tuple[int, ...]) -> str:
-    return "+" + "+".join("-" * (width + 2) for width in widths) + "+"
-
-
-def _row(values: tuple[str, ...], widths: tuple[int, ...]) -> str:
-    cells = [f" {_clip(value, width):<{width}} " for value, width in zip(values, widths)]
-    return "|" + "|".join(cells) + "|"
-
-
-def _summary_rows(report: ResearchReport) -> list[tuple[str, ...]]:
-    return [
-        (
-            " " if index else ">",
-            match.advisory.title,
+def build_results_table(report: ResearchReport, selected_index: int = -1, width: int = 100) -> Table:
+    table = Table(
+        title="Possible Vulnerability Matches",
+        border_style="white",
+        header_style="bold white",
+        show_lines=False,
+        box=box.ASCII,
+        width=width,
+    )
+    table.add_column("", width=2, style="green", no_wrap=True)
+    table.add_column("Vulnerability Name", style="white", max_width=max(18, width - 72))
+    table.add_column("CVE", style="cyan", no_wrap=True)
+    table.add_column("Published", style="white", no_wrap=True)
+    table.add_column("Severity", style="white", no_wrap=True)
+    for index, match in enumerate(report.matches):
+        table.add_row(
+            ">" if index == selected_index else "",
+            " ".join(match.advisory.title.split()),
             match.advisory.cve_id,
             match.advisory.published[:10] if match.advisory.published else "Unknown",
             match.advisory.severity,
+            style="bold green" if index == selected_index else "",
         )
-        for index, match in enumerate(report.matches)
-    ]
+    if not report.matches:
+        table.add_row("", "No matches at selected severity", "-", "-", "-")
+    return table
 
 
 def _source_name(advisory: Advisory, link: str) -> str:
@@ -50,111 +52,69 @@ def _source_name(advisory: Advisory, link: str) -> str:
     return "Source record"
 
 
-def _details_tables(advisory: Advisory, width: int) -> list[str]:
+def build_detail_tables(advisory: Advisory, width: int = 100) -> tuple[Table, Table]:
+    details = Table(
+        title=f"Details for {advisory.cve_id}",
+        border_style="white",
+        header_style="bold white",
+        show_lines=False,
+        box=box.ASCII,
+        width=width,
+    )
+    details.add_column("Name", style="white", no_wrap=True)
+    details.add_column("Information", style="white", max_width=max(20, width - 32))
+    details.add_row("Vulnerability", " ".join(advisory.title.split())[:120])
+    details.add_row("Severity", advisory.severity)
+    details.add_row("Published", advisory.published[:10] or "Unknown")
+    details.add_row("Updated", advisory.updated[:10] or "Unknown")
+    details.add_row("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed")
     affected = [item.label() for item in advisory.affected[:3]]
     if len(advisory.affected) > len(affected):
         affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD")
+    details.add_row("Affected ranges", "; ".join(affected) or "See linked advisory")
     remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
-    detail_rows = [
-        ("CVE", advisory.cve_id),
-        ("Vulnerability", advisory.title),
-        ("Severity", advisory.severity),
-        ("Published", advisory.published[:10] or "Unknown"),
-        ("Updated", advisory.updated[:10] or "Unknown"),
-        ("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed"),
-        ("Affected ranges", "; ".join(affected) or "See linked advisory"),
-        ("Remediation", remediation),
-    ]
-    key_width = min(22, max(len(key) for key, _ in detail_rows))
-    value_width = max(20, width - key_width - 7)
-    detail_widths = (key_width, value_width)
-    lines = [
-        "CVE DETAILS",
-        _border(detail_widths),
-        _row(("Name", "Information"), detail_widths),
-        _border(detail_widths),
-    ]
-    lines.extend(_row((key, value), detail_widths) for key, value in detail_rows)
-    lines.append(_border(detail_widths))
+    details.add_row("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else ""))
 
-    links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
-    link_rows = [(_source_name(advisory, link), link) for link in links[:4]]
-    if len(links) > len(link_rows):
-        link_rows.append(("More links", f"{len(links) - len(link_rows)} additional; see NVD"))
-    if not link_rows:
-        link_rows = [("Unavailable", "No source links")]
-    link_key_width = max(len("Name"), *(len(name) for name, _ in link_rows))
-    link_width = max(20, width - link_key_width - 7)
-    link_widths = (link_key_width, link_width)
-    lines += [
-        "",
-        "SOURCE LINKS",
-        _border(link_widths),
-        _row(("Name", "Link"), link_widths),
-        _border(link_widths),
-    ]
-    lines.extend(_row(row, link_widths) for row in link_rows)
-    lines.append(_border(link_widths))
-    return lines
+    links = Table(
+        title="Source Links",
+        border_style="white",
+        header_style="bold white",
+        show_lines=False,
+        box=box.ASCII,
+        width=width,
+    )
+    links.add_column("Name", style="white", no_wrap=True)
+    links.add_column("Link", style="cyan", max_width=max(24, width - 24))
+    source_links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
+    for link in source_links[:6]:
+        links.add_row(_source_name(advisory, link), link)
+    if len(source_links) > 6:
+        links.add_row("More links", f"{len(source_links) - 6} additional; see NVD")
+    if not source_links:
+        links.add_row("Unavailable", "No source links")
+    return details, links
 
 
-def _format_screen(
-    report: ResearchReport,
-    selected_index: int,
-    detail_mode: bool,
-    width: int,
-    height: int,
-) -> list[tuple[str, str]]:
-    result: list[tuple[str, str]] = []
-    if detail_mode:
-        advisory = report.matches[selected_index].advisory
-        lines = [
-            f"DETAILS FOR {advisory.cve_id}",
-            "",
-            *_details_tables(advisory, width),
-            "",
-            "Press Escape or Backspace to return to the result list. Press Q to quit.",
-        ]
-        result.extend(("", line + "\n") for line in lines)
-        return result
-
-    name_width = min(48, max(18, width - 62))
-    widths = (1, name_width, 15, 10, 20)
-    table_width = sum(widths) + 3 * len(widths) + 1
-    title = "POSSIBLE VULNERABILITIES"
-    result.append(("class:title", title.center(table_width) + "\n"))
-    result.append(("class:header", _border(widths) + "\n"))
-    result.append(("class:header", _row(("", "Vulnerability name", "CVE", "Published", "Severity"), widths) + "\n"))
-    result.append(("class:header", _border(widths) + "\n"))
-
-    page_size = max(1, height - 11)
-    page_start = selected_index // page_size * page_size
-    page_end = min(len(report.matches), page_start + page_size)
-    for index in range(page_start, page_end):
-        match = report.matches[index]
-        cells = (
-            ">" if index == selected_index else " ",
-            match.advisory.title,
-            match.advisory.cve_id,
-            match.advisory.published[:10] if match.advisory.published else "Unknown",
-            match.advisory.severity,
-        )
-        style = "class:selected" if index == selected_index else ""
-        result.append((style, _row(cells, widths) + "\n"))
-    result.append(("class:header", _border(widths) + "\n"))
-    result.append(("", f"Showing {page_start + 1}-{page_end} of {len(report.matches)}\n"))
-    if report.hidden_severity_matches:
-        result.append(("", f"Hidden Low/unscored: {report.hidden_severity_matches}. Use --include-low to include them.\n"))
-    result.append(("", "Use Up/Down to move, Enter to view details, Q to quit.\n"))
-    result.append(("", "Possible matches only; no requests were sent to the assessed asset.\n"))
-    return result
+def _render_ansi(renderables, width: int, no_color: bool) -> str:
+    output = StringIO()
+    console = Console(
+        file=output,
+        width=width,
+        force_terminal=True,
+        color_system=None if no_color else "standard",
+        no_color=no_color,
+        highlight=False,
+    )
+    for renderable in renderables:
+        console.print(renderable)
+    return output.getvalue()
 
 
 def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None:
     if not report.matches:
         return
     width, height = shutil.get_terminal_size((100, 24))
-    width = max(75, width)
+    width = max(80, width)
     state = {"selected": 0, "details": False}
     bindings = KeyBindings()
 
@@ -189,24 +149,40 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
     def quit_table(event) -> None:
         event.app.exit()
 
-    style = Style.from_dict({
-        "title": "bold",
-        "header": "bold",
-        "selected": "" if no_color or "NO_COLOR" in os.environ else "bold ansigreen",
-    })
-    control = FormattedTextControl(
-        lambda: _format_screen(
-            report,
-            state["selected"],
-            state["details"],
-            width,
-            height,
-        )
-    )
+    def get_screen():
+        if state["details"]:
+            details, links = build_detail_tables(
+                report.matches[state["selected"]].advisory,
+                width=width,
+            )
+            footer = "Escape or Backspace: results | Q: quit"
+            renderables = [details, links, footer]
+        else:
+            page_size = max(1, height - 8)
+            page_start = state["selected"] // page_size * page_size
+            page_end = min(len(report.matches), page_start + page_size)
+            paged_report = ResearchReport(
+                asset=report.asset,
+                matches=report.matches[page_start:page_end],
+                hidden_severity_matches=report.hidden_severity_matches,
+            )
+            local_index = state["selected"] - page_start
+            table = build_results_table(paged_report, local_index, width=width)
+            footer = [
+                f"Rows {page_start + 1}-{page_end} of {len(report.matches)}",
+                "Up/Down: move | Enter: details | Q: quit",
+                "Possible matches only; no requests were sent to the assessed asset.",
+            ]
+            if report.hidden_severity_matches:
+                footer.append(
+                    f"Low or unscored hidden: {report.hidden_severity_matches}; use --include-low to include."
+                )
+            renderables = [table, *footer]
+        return ANSI(_render_ansi(renderables, width, no_color))
+
     app = Application(
-        layout=Layout(Window(control, wrap_lines=False, always_hide_cursor=True)),
+        layout=Layout(Window(FormattedTextControl(get_screen), wrap_lines=False, always_hide_cursor=True)),
         key_bindings=bindings,
-        style=style,
         full_screen=False,
         erase_when_done=False,
     )
