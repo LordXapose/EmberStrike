@@ -190,9 +190,10 @@ def _render_rich(report, console: Console):
     console.print(Panel(asset_table, title="[bold cyan]ASSET[/]", border_style="cyan"))
 
     if report.matches:
-        summary = Table(title="POSSIBLE CVE MATCHES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
+        summary = Table(title="POSSIBLE VULNERABILITY MATCHES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
         summary.add_column("CVE", style="cyan", no_wrap=True)
-        summary.add_column("Advisory")
+        summary.add_column("Vulnerability / advisory name")
+        summary.add_column("Published", no_wrap=True)
         summary.add_column("Severity", no_wrap=True)
         summary.add_column("Confidence", no_wrap=True)
         summary.add_column("CISA KEV", no_wrap=True)
@@ -200,6 +201,7 @@ def _render_rich(report, console: Console):
             summary.add_row(
                 match.advisory.cve_id,
                 match.advisory.title,
+                match.advisory.published[:10] if match.advisory.published else "Unavailable",
                 match.advisory.severity,
                 match.confidence,
                 "Yes" if match.advisory.known_exploited else "No",

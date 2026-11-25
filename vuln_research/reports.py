@@ -41,6 +41,20 @@ def to_markdown(report: ResearchReport) -> str:
         lines += ["", "Offline mode was selected; no public sources were queried."]
     elif not report.matches:
         lines += ["", "No possible matches were found in the available source results. This does not establish that the asset is unaffected."]
+    if report.matches:
+        lines += [
+            "",
+            "| CVE | Vulnerability / advisory name | Published | Severity | Match |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for match in report.matches:
+            advisory = match.advisory
+            title = " ".join(advisory.title.split()).replace("|", "\\|")
+            published = advisory.published[:10] if advisory.published else "Unavailable"
+            lines.append(
+                f"| {advisory.cve_id} | {title} | {published} | {advisory.severity} | {match.confidence} |"
+            )
+        lines.append("")
     for match in report.matches:
         advisory = match.advisory
         lines += [
@@ -86,12 +100,36 @@ def to_plain(report: ResearchReport) -> str:
         f"Vendor/version/build: {' / '.join(part or 'Not provided' for part in (report.asset.vendor, report.asset.version, report.asset.build))}",
         f"Port/protocol: {report.asset.port or 'Not provided'} / {report.asset.protocol or 'Not provided'}",
         "",
-        "POSSIBLE MATCHES",
+        "POSSIBLE VULNERABILITY MATCHES",
     ]
     if report.offline:
         lines.append("Offline mode: no public sources were queried.")
     if not report.matches and not report.offline:
         lines.append("No possible matches found in available results; this does not establish that the asset is unaffected.")
+    if report.matches:
+        rows = [
+            (
+                match.advisory.cve_id,
+                " ".join(match.advisory.title.split()),
+                match.advisory.published[:10] if match.advisory.published else "Unavailable",
+                match.advisory.severity,
+                match.confidence,
+            )
+            for match in report.matches
+        ]
+        headers = ("CVE", "Vulnerability / advisory name", "Published", "Severity", "Match")
+        widths = tuple(
+            max(len(headers[index]), *(len(row[index]) for row in rows))
+            for index in range(len(headers))
+        )
+        lines.append(" | ".join(value.ljust(widths[index]) for index, value in enumerate(headers)))
+        lines.append("-+-".join("-" * width for width in widths))
+        lines.extend(
+            " | ".join(value.ljust(widths[index]) for index, value in enumerate(row))
+            for row in rows
+        )
+        lines.append("All entries are possible matches, not confirmation that an asset is vulnerable.")
+        lines.append("")
     for match in report.matches:
         advisory = match.advisory
         lines += [

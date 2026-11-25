@@ -42,7 +42,7 @@ emberstrike services
 emberstrike show CVE-2023-42794
 ```
 
-`-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` displays a summary table followed by detailed possible-match evidence. `show` retrieves public CVE/CISA advisory details, affected versions, remediation, and safe verification guidance. It does not provide exploit instructions, payloads, or proof-of-concept links.
+`-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` first displays a list-style table of vulnerability/advisory name, CVE ID, publication date, severity, and match confidence. The table appears in the default plain CLI output as well as terminal display; Markdown reports also include it. Detailed possible-match evidence follows. These are vulnerability advisory names, not exploit or proof-of-concept names. To inspect one CVE in detail, use `emberstrike show CVE-ID`; it retrieves public advisory details, affected versions, remediation, and safe verification guidance. It does not provide exploit instructions, payloads, or proof-of-concept links.
 
 Or provide observed details as flags. No target traffic is sent:
 

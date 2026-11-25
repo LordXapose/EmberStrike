@@ -10,6 +10,7 @@ from vuln_research.cli import build_parser, main, render_banner, _observation, _
 from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
 from vuln_research.reports import to_json, to_markdown, to_plain
+from vuln_research.research import run_research
 from rich.console import Console
 from unittest.mock import patch
 
@@ -39,6 +40,27 @@ class InputTests(unittest.TestCase):
             ])
         self.assertEqual(result, 0)
         self.assertTrue(json.loads(stdout.getvalue())["offline"])
+
+    def test_default_search_prints_match_table_for_redirected_output(self):
+        asset = AssetObservation(assessment="Q4", product="Tomcat", vendor="Apache")
+        advisory = Advisory(
+            "CVE-2099-1234", "Example advisory",
+            published="2099-01-02T03:04:05Z",
+        )
+        report = ResearchReport(
+            asset,
+            [PossibleMatch(advisory, "Medium", ["Name matches."], ["Build unknown."], [])],
+        )
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch("vuln_research.cli.run_research", return_value=report), \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = main([
+                "search", "-n", "Q4", "-p", "Tomcat", "--non-interactive",
+            ])
+        self.assertEqual(result, 0)
+        self.assertIn("Vulnerability / advisory name", stdout.getvalue())
+        self.assertIn("CVE-2099-1234", stdout.getvalue())
+        self.assertIn("2099-01-02", stdout.getvalue())
 
     def test_show_subcommand_renders_cve_advisory_without_exploit_steps(self):
         advisory = Advisory(
@@ -106,7 +128,12 @@ class ReportTests(unittest.TestCase):
         self.assertIn("CVE-2099-1234", to_json(self.report))
         self.assertIn("POSSIBLE MATCHES", to_markdown(self.report))
         self.assertIn("written authorization", to_markdown(self.report))
-        self.assertIn("POSSIBLE MATCHES", to_plain(self.report))
+        self.assertIn("| CVE | Vulnerability / advisory name | Published |", to_markdown(self.report))
+        plain = to_plain(self.report)
+        self.assertIn("POSSIBLE VULNERABILITY MATCHES", plain)
+        self.assertIn("Vulnerability / advisory name", plain)
+        self.assertIn("Published", plain)
+        self.assertIn("Example advisory", plain)
         self.assertIn("not proof", to_plain(self.report))
 
     def test_json_file_saving_keeps_stdout_machine_readable(self):
@@ -127,8 +154,9 @@ class ReportTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, no_color=True, width=120)
         _render_rich(self.report, console)
-        self.assertIn("POSSIBLE CVE MATCHES", output.getvalue())
+        self.assertIn("POSSIBLE VULNERABILITY MATCHES", output.getvalue())
         self.assertIn("CVE-2099-1234", output.getvalue())
+        self.assertIn("Published", output.getvalue())
         self.assertNotRegex(output.getvalue(), re.compile(r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF]"))
 
 
