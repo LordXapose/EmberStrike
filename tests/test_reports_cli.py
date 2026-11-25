@@ -6,13 +6,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vuln_research.cli import build_parser, main, render_banner, _observation, _render_rich
+from vuln_research.cli import (
+    _observation,
+    _render_rich,
+    _select_match,
+    build_parser,
+    main,
+    render_banner,
+)
 from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
 from vuln_research.reports import advisory_to_plain, to_json, to_markdown, to_plain
 from vuln_research.research import filter_report_severity, run_research
 from rich.console import Console
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 class InputTests(unittest.TestCase):
@@ -98,6 +105,30 @@ class InputTests(unittest.TestCase):
         self.assertIn("and 17 more", rendered)
         self.assertNotIn("lengthy description", rendered)
         self.assertNotIn("Product 19", rendered)
+
+    def test_selectable_results_open_chosen_cve_details(self):
+        advisory = Advisory(
+            "CVE-2099-0015",
+            "Selectable example",
+            severity="HIGH",
+            published="2099-01-02",
+        )
+        match = PossibleMatch(advisory, "High", [], [], [])
+        report = ResearchReport(
+            AssetObservation(assessment="Q4", product="Tomcat"),
+            [match],
+        )
+        menu = Mock()
+        menu.ask.side_effect = [match, "__exit__"]
+        console = Console(file=io.StringIO(), no_color=True)
+        with patch("vuln_research.cli.questionary.select", return_value=menu) as select, \
+             patch("vuln_research.cli._render_advisory") as render:
+            _select_match(report, console)
+        self.assertEqual(menu.ask.call_count, 2)
+        render.assert_called_once_with(advisory, [], console)
+        choices = select.call_args.kwargs["choices"]
+        self.assertIn("Vulnerability name", select.call_args.args[0])
+        self.assertIn("CVE-2099-0015", choices[0].title)
 
     def test_default_search_hides_low_severity_and_include_low_restores_it(self):
         low_advisory = Advisory(
