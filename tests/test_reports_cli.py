@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vuln_research.cli import (
     _observation,
+    _render_advisory,
     _render_rich,
     build_parser,
     main,
@@ -105,6 +106,19 @@ class InputTests(unittest.TestCase):
         self.assertIn("and 17 more", rendered)
         self.assertNotIn("lengthy description", rendered)
         self.assertNotIn("Product 19", rendered)
+
+    def test_terminal_show_renderer_uses_rich_detail_tables(self):
+        advisory = Advisory(
+            "CVE-2025-12345",
+            "Example advisory",
+            vendor_advisories=["https://vendor.example/security"],
+        )
+        output = io.StringIO()
+        _render_advisory(advisory, [], Console(file=output, no_color=True, width=100))
+        rendered = output.getvalue()
+        self.assertIn("Details for CVE-2025-12345", rendered)
+        self.assertIn("Source Links", rendered)
+        self.assertIn("https://vendor.example/security", rendered)
 
     def test_selectable_table_draws_highlighted_bordered_rows_and_details(self):
         advisory = Advisory(

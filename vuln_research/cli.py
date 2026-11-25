@@ -25,7 +25,7 @@ from .reports import (
     to_plain,
 )
 from .research import filter_report_severity, run_research
-from .selectable_table import build_results_table, run_selectable_table
+from .selectable_table import build_detail_tables, build_results_table, run_selectable_table
 from .sources import cisa_kev, nvd
 from .sources.base import SourceError
 
