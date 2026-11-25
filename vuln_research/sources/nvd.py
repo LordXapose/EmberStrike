@@ -17,8 +17,23 @@ def _iter_cpe_matches(node: dict):
 
 
 def _parse_criteria(criteria: str) -> tuple[str, str, str]:
-    # CPE 2.3 fields are colon-delimited; vendor/product/version are stable positions.
-    parts = criteria.split(":")
+    # CPE 2.3 permits escaped colons inside fields, so a plain split is unsafe.
+    parts = []
+    field = []
+    index = 0
+    while index < len(criteria):
+        char = criteria[index]
+        if char == "\\" and index + 1 < len(criteria):
+            field.append(criteria[index + 1])
+            index += 2
+            continue
+        if char == ":":
+            parts.append("".join(field))
+            field = []
+        else:
+            field.append(char)
+        index += 1
+    parts.append("".join(field))
     if len(parts) < 6:
         return "", "", ""
     return parts[3].replace("_", " "), parts[4].replace("_", " "), parts[5]
@@ -88,15 +103,44 @@ def _advisory(item: dict) -> Advisory:
     )
 
 
-def search(keyword: str, limit: int = 2000) -> list[Advisory]:
+def search(keyword: str, limit: int | None = None) -> list[Advisory]:
     if not keyword.strip():
         return []
-    url = f"{NVD_URL}?{urlencode({'keywordSearch': keyword, 'resultsPerPage': min(limit, 2000)})}"
-    data = fetch_json(url, timeout=30.0)
-    try:
-        return [_advisory(item) for item in data.get("vulnerabilities", [])]
-    except (AttributeError, TypeError, KeyError) as exc:
-        raise SourceError("NVD returned an unexpected response structure.") from exc
+    if limit is not None and limit < 1:
+        raise SourceError("NVD search limit must be at least 1.")
+
+    page_size = min(limit, 2000) if limit is not None else 2000
+    start_index = 0
+    advisories = []
+    total_results = None
+    while total_results is None or start_index < total_results:
+        params = {
+            "keywordSearch": keyword,
+            "resultsPerPage": page_size,
+            "startIndex": start_index,
+        }
+        url = f"{NVD_URL}?{urlencode(params)}"
+        data = fetch_json(url, timeout=30.0)
+        try:
+            vulnerabilities = data.get("vulnerabilities", [])
+            if not isinstance(vulnerabilities, list):
+                raise TypeError("vulnerabilities is not a list")
+            total_results = int(data.get("totalResults", len(vulnerabilities)))
+            response_start = int(data.get("startIndex", start_index))
+            advisories.extend(_advisory(item) for item in vulnerabilities)
+        except (AttributeError, TypeError, ValueError, KeyError) as exc:
+            raise SourceError("NVD returned an unexpected response structure.") from exc
+
+        if limit is not None and len(advisories) >= limit:
+            return advisories[:limit]
+        if not vulnerabilities:
+            break
+        next_start = response_start + len(vulnerabilities)
+        if next_start <= start_index:
+            raise SourceError("NVD pagination did not advance; stopping to avoid repeating results.")
+        start_index = next_start
+
+    return advisories
 
 
 def lookup(cve_id: str) -> Advisory | None:

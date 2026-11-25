@@ -5,6 +5,8 @@ import re
 import sys
 from pathlib import Path
 
+import argcomplete
+from argcomplete.completers import ChoicesCompleter
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -14,6 +16,7 @@ from rich.text import Text
 
 from .models import Advisory, AssetObservation
 from .banner import BANNER
+from .catalog import PRODUCTS, SERVICE_TYPES, VENDORS
 from .reports import (
     advisory_to_json,
     advisory_to_markdown,
@@ -34,7 +37,8 @@ def build_parser(prog: str = "emberstrike") -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   emberstrike
-  emberstrike search --assessment "Quarterly review" --product "Apache Tomcat" --vendor Apache
+  emberstrike search -n "Quarterly review" -s HTTPS -p "Apache Tomcat" -v Apache
+  emberstrike services
   emberstrike show CVE-2023-42794
   emberstrike --assessment "Quarterly review" --scope-notes "Written approval, staging only" \\
     --asset app-01 --port 8443 --protocol https --service web-server \\
@@ -48,27 +52,60 @@ No credentials are requested or needed.
 
 EmberStrike | Developer: LordXapose""",
     )
-    parser.add_argument("--assessment", help="Assessment or engagement name")
+    parser.add_argument("-n", "--assessment", help="Assessment or engagement name")
     parser.add_argument("--scope-notes", help="Brief note about written authorization and scope")
-    parser.add_argument("--asset", help="Asset label or hostname (optional; not contacted)")
-    parser.add_argument("--port", type=int, help="Observed service port")
+    parser.add_argument("-a", "--asset", help="Asset label or hostname (optional; not contacted)")
+    parser.add_argument("-P", "--port", type=int, help="Observed service port")
     parser.add_argument("--protocol", help="Observed protocol, e.g. tcp, https, or ssh")
-    parser.add_argument("--service", help="Detected service")
-    parser.add_argument("--product", help="Detected product")
-    parser.add_argument("--vendor", help="Product vendor")
-    parser.add_argument("--observed-version", "--version", dest="version", help="Observed version")
+    service_action = parser.add_argument(
+        "-s", "--service", help="Detected service (tab-complete common services)"
+    )
+    product_action = parser.add_argument(
+        "-p", "--product", help="Detected product (tab-complete common products)"
+    )
+    vendor_action = parser.add_argument("-v", "--vendor", help="Product vendor")
+    parser.add_argument("-V", "--observed-version", "--version", dest="version", help="Observed version")
     parser.add_argument("--build-number", dest="build", help="Observed build or patch level")
     parser.add_argument("--platform", help="Operating system or platform")
     parser.add_argument("--modules", help="Modules or relevant configuration")
     parser.add_argument("--identified-by", help="How the service was identified")
-    parser.add_argument("--confidence", choices=("High", "Medium", "Low"), help="Confidence in the observation")
+    parser.add_argument("-c", "--confidence", choices=("High", "Medium", "Low"), help="Confidence in the observation")
     parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain", help="Report format (default: plain)")
     parser.add_argument("--output", type=Path, help="Save a report to this local file")
     parser.add_argument("--offline", action="store_true", help="Do not query public vulnerability sources")
     parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
     parser.add_argument("--limit", type=int, help="Maximum possible matches to report (default: all matches)")
     parser.add_argument("--non-interactive", action="store_true", help="Do not prompt; fail if key inputs are missing")
+    service_action.completer = ChoicesCompleter(SERVICE_TYPES)
+    product_action.completer = ChoicesCompleter(PRODUCTS)
+    vendor_action.completer = ChoicesCompleter(VENDORS)
     return parser
+
+
+def _services_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="emberstrike services",
+        description="Show common service and product suggestions. The list is not exhaustive.",
+    )
+    parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
+    args = parser.parse_args(argv)
+    console = Console(no_color=args.no_color or "NO_COLOR" in os.environ, highlight=False)
+    if sys.stdout.isatty():
+        render_banner(console)
+    table = Table(title="COMMON SERVICE AND PRODUCT SUGGESTIONS", box=box.SIMPLE_HEAVY)
+    table.add_column("Service types (-s)", style="cyan")
+    table.add_column("Products (-p)", style="green")
+    rows = max(len(SERVICE_TYPES), len(PRODUCTS))
+    for index in range(rows):
+        table.add_row(
+            SERVICE_TYPES[index] if index < len(SERVICE_TYPES) else "",
+            PRODUCTS[index] if index < len(PRODUCTS) else "",
+        )
+    console.print(table)
+    console.print("[dim]The columns are independent suggestion lists, not service-to-product mappings.[/]")
+    console.print("[dim]Suggestions only; you can type any service or product name.[/]")
+    console.print("[dim]Example: emberstrike search -n review -s HTTPS -p 'Apache Tomcat' -v Apache -V 9.0.80[/]")
+    return 0
 
 
 def render_banner(console: Console) -> None:
@@ -137,7 +174,7 @@ def _render_rich(report, console: Console):
         ("Identified by / confidence", f"{asset.identified_by or 'Not provided'} / {asset.confidence}"),
     ):
         asset_table.add_row(label, value)
-    console.print(Panel(asset_table, title="[bold cyan]🧾 ASSET[/]", border_style="cyan"))
+    console.print(Panel(asset_table, title="[bold cyan]ASSET[/]", border_style="cyan"))
 
     if report.matches:
         summary = Table(title="POSSIBLE CVE MATCHES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
@@ -157,12 +194,12 @@ def _render_rich(report, console: Console):
         console.print(summary)
 
     if report.offline:
-        console.print("[yellow]ℹ Offline mode:[/] no public sources were queried.")
+        console.print("[yellow]Notice: Offline mode:[/] no public sources were queried.")
     elif report.source_warnings:
         for warning in report.source_warnings:
-            console.print(f"[yellow]⚠ Source notice:[/] {warning}")
+            console.print(f"[yellow]Source notice:[/] {warning}")
     if not report.matches:
-        console.print(Panel("No possible matches found in available results. This does not establish that the asset is unaffected.", title="[bold yellow]🔎 POSSIBLE MATCHES[/]", border_style="yellow"))
+        console.print(Panel("No possible matches found in available results. This does not establish that the asset is unaffected.", title="[bold yellow]POSSIBLE MATCHES[/]", border_style="yellow"))
     for match in report.matches:
         advisory = match.advisory
         color = {"High": "red", "Medium": "yellow", "Low": "green"}[match.confidence]
@@ -179,14 +216,14 @@ def _render_rich(report, console: Console):
             f"[bold]Primary sources:[/] {', '.join(advisory.references) or 'Unavailable'}",
             "[bold]Safe verification:[/] Confirm the exact build using an approved inventory or vendor-supported read-only method; do not send test payloads.",
         ]
-        console.print(Panel("\n".join(content), title=f"[bold magenta]🔎 POSSIBLE MATCH — {advisory.cve_id}[/]", border_style=color))
+        console.print(Panel("\n".join(content), title=f"[bold magenta]POSSIBLE MATCH — {advisory.cve_id}[/]", border_style=color))
 
     evidence = "Public records were compared with the supplied observation. No request was sent to the assessed asset."
     if report.offline:
         evidence = "No public sources were queried (offline mode)."
     if report.source_warnings:
         evidence += "\n" + "\n".join(report.source_warnings)
-    console.print(Panel(evidence, title="[bold blue]📚 EVIDENCE[/]", border_style="blue"))
+    console.print(Panel(evidence, title="[bold blue]EVIDENCE[/]", border_style="blue"))
     steps = "\n".join(
         f"{number}. {step}" for number, step in enumerate((
             "Confirm product, exact build, and patch level using an approved inventory or vendor-supported method.",
@@ -195,7 +232,7 @@ def _render_rich(report, console: Console):
             "Stay within written authorization and scope; record evidence and uncertainty.",
         ), 1)
     )
-    console.print(Panel(steps, title="[bold green]✅ NEXT STEPS[/]", border_style="green"))
+    console.print(Panel(steps, title="[bold green]NEXT STEPS[/]", border_style="green"))
     console.print("[dim]Possible matches are research leads, not proof that a host is vulnerable.[/]")
 
 
@@ -219,7 +256,7 @@ def _render_advisory(advisory: Advisory, source_warnings: list[str], console: Co
         border_style="green",
     ))
     for warning in source_warnings:
-        console.print(f"[yellow]⚠ Source notice:[/] {warning}")
+        console.print(f"[yellow]Source notice:[/] {warning}")
 
 
 def _show_main(argv: list[str]) -> int:
@@ -227,10 +264,10 @@ def _show_main(argv: list[str]) -> int:
         prog="emberstrike show",
         description="Show public advisory details for one CVE. This command does not provide exploit instructions or contact a target.",
     )
-    parser.add_argument("cve_id", help="CVE identifier, e.g. CVE-2023-42794")
     parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain")
     parser.add_argument("--output", type=Path, help="Save the advisory report locally")
     parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
+    parser.add_argument("cve_id", help="CVE identifier, e.g. CVE-2023-42794")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,}", args.cve_id.upper()):
         parser.error("Use a CVE identifier such as CVE-2025-12345.")
@@ -299,6 +336,8 @@ def _show_main(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "services":
+        return _services_main(arguments[1:])
     if arguments and arguments[0] == "show":
         return _show_main(arguments[1:])
     command = None
@@ -306,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
         command = "search"
         arguments = arguments[1:]
     parser = build_parser(prog="emberstrike search" if command else "emberstrike")
+    argcomplete.autocomplete(parser)
     args = parser.parse_args(arguments)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1.")

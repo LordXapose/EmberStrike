@@ -4,17 +4,62 @@ from packaging.version import InvalidVersion, Version
 from .models import Advisory, AssetObservation, PossibleMatch
 
 
+_PRODUCT_GROUPS = (
+    {"apache http server", "http server", "httpd"},
+    {"apache tomcat", "tomcat"},
+    {"microsoft exchange server", "exchange server", "exchange"},
+    {"microsoft iis", "iis", "internet information services"},
+    {"microsoft sql server", "sql server"},
+    {"postgresql", "postgres"},
+)
+
+
 def _normalize(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value.lower()))
 
 
-def _same_product(observed: str, candidate: str) -> bool:
+def _product_forms(value: str) -> set[str]:
+    normalized = _normalize(value)
+    if not normalized:
+        return set()
+    for group in _PRODUCT_GROUPS:
+        if normalized in group:
+            return group
+    return {normalized}
+
+
+def _strip_vendor_prefix(product: str, vendor: str) -> str:
+    product_tokens = product.split()
+    vendor_tokens = vendor.split()
+    if vendor_tokens and product_tokens[:len(vendor_tokens)] == vendor_tokens:
+        return " ".join(product_tokens[len(vendor_tokens):])
+    return product
+
+
+def _same_product(
+    observed: str,
+    candidate: str,
+    observed_vendor: str = "",
+    candidate_vendor: str = "",
+) -> bool:
     observed_norm, candidate_norm = _normalize(observed), _normalize(candidate)
-    return bool(observed_norm and candidate_norm and (
-        observed_norm == candidate_norm
-        or observed_norm in candidate_norm
-        or candidate_norm in observed_norm
-    ))
+    observed_norm = _strip_vendor_prefix(
+        observed_norm,
+        _normalize(observed_vendor) or _normalize(candidate_vendor),
+    )
+    candidate_norm = _strip_vendor_prefix(candidate_norm, _normalize(candidate_vendor))
+    return bool(observed_norm and candidate_norm and _product_forms(observed_norm) & _product_forms(candidate_norm))
+
+
+def _description_mentions_product(description: str, product: str) -> bool:
+    normalized_description = _normalize(description)
+    return bool(
+        normalized_description
+        and any(
+            form and f" {form} " in f" {normalized_description} "
+            for form in _product_forms(product)
+        )
+    )
 
 
 def _version_in_range(version: str, affected) -> bool | None:
@@ -61,20 +106,20 @@ def _unique_affected(affected):
 def match_advisory(advisory: Advisory, asset: AssetObservation) -> PossibleMatch | None:
     observed_product = asset.product or asset.service
     products = [
-        item for item in advisory.affected
-        if _same_product(observed_product, item.product)
-        and not (
-            asset.vendor
-            and _normalize(item.product) == _normalize(asset.vendor)
-            and _normalize(observed_product) != _normalize(item.product)
+        item for item in _unique_affected(advisory.affected)
+        if _same_product(
+            observed_product,
+            item.product,
+            asset.vendor,
+            item.vendor,
         )
     ]
-    description_matches = _same_product(asset.product or asset.service, advisory.description)
+    description_matches = _description_mentions_product(advisory.description, observed_product)
     if not products and not description_matches:
         return None
 
     vendor_matches = any(
-        not asset.vendor or _same_product(asset.vendor, item.vendor)
+        not asset.vendor or _normalize(asset.vendor) == _normalize(item.vendor)
         for item in products
     )
     why = []
@@ -104,6 +149,8 @@ def match_advisory(advisory: Advisory, asset: AssetObservation) -> PossibleMatch
         conflict.append(f"Observed version '{asset.version}' is outside the affected range recorded by this source.")
     if not asset.build:
         missing.append("Build/patch level is unknown; vendors may backport fixes without changing the displayed version.")
+    if not asset.vendor:
+        missing.append("Vendor was not supplied, so vendor-specific matching could not be confirmed.")
     if not asset.identified_by:
         missing.append("The method used to identify the service was not recorded.")
     if asset.confidence.lower() in ("low", "medium"):
@@ -111,7 +158,7 @@ def match_advisory(advisory: Advisory, asset: AssetObservation) -> PossibleMatch
     if not advisory.vendor_advisories:
         missing.append("No vendor advisory link was identified in the returned record; consult the vendor's security notices.")
 
-    if products and vendor_matches and in_range:
+    if products and asset.vendor and vendor_matches and in_range:
         confidence = "High"
     elif products and vendor_matches:
         confidence = "Medium"

@@ -33,14 +33,15 @@ Use dedicated commands for searching and viewing a CVE advisory:
 
 ```bash
 emberstrike search \
-  --assessment "Quarterly internal review" \
-  --product "Apache Tomcat" --vendor Apache \
-  --observed-version 9.0.80 --confidence High
+  -n "Quarterly internal review" \
+  -s HTTPS -p "Apache Tomcat" -v Apache \
+  -V 9.0.80 -c High
 
+emberstrike services
 emberstrike show CVE-2023-42794
 ```
 
-`search` displays a summary table followed by detailed possible-match evidence. `show` retrieves public CVE/CISA advisory details, affected versions, remediation, and safe verification guidance. It does not provide exploit instructions, payloads, or proof-of-concept links.
+`-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` displays a summary table followed by detailed possible-match evidence. `show` retrieves public CVE/CISA advisory details, affected versions, remediation, and safe verification guidance. It does not provide exploit instructions, payloads, or proof-of-concept links.
 
 Or provide observed details as flags. No target traffic is sent:
 
@@ -59,6 +60,31 @@ emberstrike \
 
 Choose `--format plain`, `json`, or `markdown`. By default, EmberStrike displays all possible matches it retrieves; use `--limit 25` to cap the list. `--output FILE` saves that format locally and also prints the report. Use `--offline` to skip public-source requests, `--no-color` to disable color, or set `NO_COLOR` in the environment. `--non-interactive` disables prompts; it is useful for scripts. Run `emberstrike --help` for all input flags and examples.
 
+### Tab completion
+
+EmberStrike uses `argcomplete` to complete common service, product, and vendor suggestions. After installing EmberStrike, enable completion for your shell:
+
+**Bash** — add this line to `~/.bashrc`, then open a new shell:
+
+```bash
+eval "$(register-python-argcomplete emberstrike)"
+```
+
+**Zsh** — add this line to `~/.zshrc`, then open a new shell:
+
+```zsh
+eval "$(register-python-argcomplete --shell zsh emberstrike)"
+```
+
+Then type an option and press Tab, for example:
+
+```bash
+emberstrike search -s <TAB>
+emberstrike search -p <TAB>
+```
+
+Completion suggests common names; custom service and product names remain accepted.
+
 ## How to read matches
 
 - **High / Medium / Low** describes how closely the supplied product/vendor/version details match the public record—not certainty about the host.
@@ -73,7 +99,7 @@ These are planned improvements, not features currently available. The order prio
 
 ### 1. Match accuracy
 
-- Improve CPE parsing, affected-version range handling, and deduplication.
+- Improve CPE parsing, affected-version range handling, and deduplication. Exact product-name matching and broader NVD pagination are included in the initial Stage 1 work.
 - Treat unfamiliar or vendor-specific versions conservatively; never infer that an unparseable version is affected.
 - Distinguish product match, version match, and host verification, and explain what evidence supports each confidence level.
 - Test ambiguous product names, vendor forks, backported fixes, missing versions, and conflicting evidence.

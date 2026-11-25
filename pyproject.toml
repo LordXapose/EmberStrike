@@ -12,6 +12,7 @@ authors = [{ name = "LordXapose" }]
 dependencies = [
   "rich>=13.7,<15",
   "packaging>=23.2",
+  "argcomplete>=3.2,<4",
 ]
 
 [project.scripts]

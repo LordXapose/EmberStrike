@@ -61,6 +61,41 @@ class MatchingTests(unittest.TestCase):
         )
         self.assertIsNone(match_advisory(advisory, self.asset))
 
+    def test_partial_product_names_do_not_match(self):
+        advisory = Advisory(
+            cve_id="CVE-2099-0008", title="Example issue",
+            affected=[AffectedRange(vendor="Apache", product="Tomcat Embed Core")],
+        )
+        self.assertIsNone(match_advisory(advisory, self.asset))
+
+    def test_vendor_prefix_in_observed_product_is_handled_exactly(self):
+        self.asset.product = "Apache Tomcat"
+        advisory = Advisory(
+            cve_id="CVE-2099-0009", title="Example issue",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat", start_including="9.0.0",
+                end_excluding="9.0.90",
+            )],
+        )
+        result = match_advisory(advisory, self.asset)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.confidence, "High")
+
+    def test_known_product_alias_matches_without_substring_guessing(self):
+        self.asset.product = "Microsoft IIS"
+        self.asset.vendor = "Microsoft"
+        self.asset.version = "10.0"
+        advisory = Advisory(
+            cve_id="CVE-2099-0010", title="Example issue",
+            affected=[AffectedRange(
+                vendor="Microsoft", product="Internet Information Services",
+                start_including="10.0", end_excluding="11.0",
+            )],
+        )
+        result = match_advisory(advisory, self.asset)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.confidence, "High")
+
     def test_description_only_match_is_low_confidence(self):
         advisory = Advisory(
             cve_id="CVE-2099-0006",

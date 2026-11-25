@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +24,7 @@ class InputTests(unittest.TestCase):
         self.assertIn("EmberStrike", output.getvalue())
         self.assertIn("LordXapose", output.getvalue())
         self.assertIn(BANNER.splitlines()[1], output.getvalue())
+        self.assertNotRegex(output.getvalue(), re.compile(r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF]"))
 
     def test_search_subcommand_works_with_flags(self):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -59,6 +61,21 @@ class InputTests(unittest.TestCase):
         observation = _observation(args, Console(), interactive=False)
         self.assertEqual(observation.port, 8443)
         self.assertEqual(observation.product, "Tomcat")
+
+    def test_short_flags_and_services_catalog(self):
+        args = build_parser().parse_args([
+            "-n", "Q4", "-s", "HTTPS", "-p", "Apache Tomcat",
+            "-v", "Apache", "-V", "9.0.80",
+        ])
+        observation = _observation(args, Console(), interactive=False)
+        self.assertEqual(observation.service, "HTTPS")
+        self.assertEqual(observation.product, "Apache Tomcat")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = main(["services", "--no-color"])
+        self.assertEqual(result, 0)
+        self.assertIn("Apache Tomcat", stdout.getvalue())
+        self.assertIn("SSH", stdout.getvalue())
 
     def test_requires_assessment_and_product_or_service(self):
         for argv, message in ((["--product", "Tomcat"], "assessment name"), (["--assessment", "Q4"], "product or service")):
@@ -108,6 +125,7 @@ class ReportTests(unittest.TestCase):
         _render_rich(self.report, console)
         self.assertIn("POSSIBLE CVE MATCHES", output.getvalue())
         self.assertIn("CVE-2099-1234", output.getvalue())
+        self.assertNotRegex(output.getvalue(), re.compile(r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF]"))
 
 
 if __name__ == "__main__":
