@@ -38,11 +38,12 @@ emberstrike search \
   -s HTTPS -p "Apache Tomcat" -v Apache \
   -V 9.0.80 -c High
 
+emberstrike search -n "Include all severities" -p "Apache Tomcat" --include-low
 emberstrike services
 emberstrike show CVE-2023-42794
 ```
 
-`-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` first displays a list-style table of vulnerability/advisory name, CVE ID, publication date, severity, and match confidence. The table appears in the default plain CLI output as well as terminal display; Markdown reports also include it. Detailed possible-match evidence follows. These are vulnerability advisory names, not exploit or proof-of-concept names. To inspect one CVE in detail, use `emberstrike show CVE-ID`; it retrieves public advisory details, affected versions, remediation, and safe verification guidance. It does not provide exploit instructions, payloads, or proof-of-concept links.
+`-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` displays a compact table of vulnerability name, CVE ID, publication date, and severity. By default, Critical, High, and Medium severity records are shown; Low or unscored records are hidden. Add `--include-low` to include them. These are vulnerability advisory names, not exploit or proof-of-concept names. To inspect one CVE, use `emberstrike show CVE-ID`; its output is limited to a boxed details table and a source-name/link table. JSON output remains available for full structured records. EmberStrike does not provide exploit instructions, payloads, or proof-of-concept links.
 
 Or provide observed details as flags. No target traffic is sent:
 
@@ -59,7 +60,7 @@ emberstrike \
   --format markdown --output report.md
 ```
 
-Choose `--format plain`, `json`, or `markdown`. By default, EmberStrike displays all possible matches it retrieves; use `--limit 25` to cap the list. `--output FILE` saves that format locally and also prints the report. Use `--offline` to skip public-source requests, `--no-color` to disable color, or set `NO_COLOR` in the environment. `--non-interactive` disables prompts; it is useful for scripts. Run `emberstrike --help` for all input flags and examples.
+Choose `--format plain`, `json`, or `markdown`. By default, EmberStrike shows Critical, High, and Medium severity records in a compact table; Low and unscored severities are hidden. Add `--include-low` to include them. `--limit 25` caps the number of matches. `--output FILE` saves that format locally and also prints the report. Use `--offline` to skip public-source requests, `--no-color` to disable color, or set `NO_COLOR` in the environment. `--non-interactive` disables prompts; it is useful for scripts. Run `emberstrike --help` for all input flags and examples.
 
 ### Tab completion
 
@@ -127,6 +128,7 @@ Completion suggests common names; custom service and product names remain accept
 | `--offline` | Skip all public-source queries. |
 | `--no-color` | Disable terminal color; `NO_COLOR` is also respected. |
 | `--limit N` | Cap the number of possible matches (default: show all retrieved matches). |
+| `--include-low` | Include Low and unscored severity results; hidden by default. |
 | `--non-interactive` | Do not prompt; return a clear error if required inputs are missing. |
 
 Run `emberstrike search --help` for the full search help. `show` accepts `--format`, `--output`, and `--no-color`; `services` accepts `--no-color`.

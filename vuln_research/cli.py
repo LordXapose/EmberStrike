@@ -9,7 +9,6 @@ import argcomplete
 from argcomplete.completers import ChoicesCompleter
 from rich import box
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
@@ -25,7 +24,7 @@ from .reports import (
     to_markdown,
     to_plain,
 )
-from .research import run_research
+from .research import filter_report_severity, run_research
 from .sources import cisa_kev, nvd
 from .sources.base import SourceError
 
@@ -87,6 +86,11 @@ EmberStrike | Developer: LordXapose""",
     output.add_argument("--offline", action="store_true", help="Skip public-source requests")
     output.add_argument("--no-color", action="store_true", help="Disable color (also respects NO_COLOR)")
     output.add_argument("--limit", type=int, help="Maximum possible matches to report (default: all matches)")
+    output.add_argument(
+        "--include-low",
+        action="store_true",
+        help="Include Low and unscored severity results (hidden by default)",
+    )
     output.add_argument("--non-interactive", action="store_true", help="Do not prompt; fail if required input is missing")
     service_action.completer = ChoicesCompleter(SERVICE_TYPES)
     product_action.completer = ChoicesCompleter(PRODUCTS)
@@ -172,104 +176,73 @@ def _observation(args, console: Console, interactive: bool) -> AssetObservation:
 
 
 def _render_rich(report, console: Console):
-    asset = report.asset
-    asset_table = Table(show_header=False, box=box.SIMPLE, pad_edge=False)
-    asset_table.add_column("Field", style="cyan", no_wrap=True)
-    asset_table.add_column("Observed value")
-    for label, value in (
-        ("Assessment", asset.assessment),
-        ("Authorized scope", asset.scope_notes or "Not provided"),
-        ("Asset", asset.asset or "Not provided"),
-        ("Service / product", " / ".join(part for part in (asset.service, asset.product) if part) or "Not provided"),
-        ("Vendor / version / build", " / ".join(part or "Not provided" for part in (asset.vendor, asset.version, asset.build))),
-        ("Port / protocol", f"{asset.port or 'Not provided'} / {asset.protocol or 'Not provided'}"),
-        ("Platform / modules", " / ".join(part or "Not provided" for part in (asset.platform, asset.modules))),
-        ("Identified by / confidence", f"{asset.identified_by or 'Not provided'} / {asset.confidence}"),
-    ):
-        asset_table.add_row(label, value)
-    console.print(Panel(asset_table, title="[bold cyan]ASSET[/]", border_style="cyan"))
-
+    summary = Table(title="POSSIBLE VULNERABILITIES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
+    summary.add_column("Vulnerability name", max_width=42, no_wrap=True, overflow="ellipsis")
+    summary.add_column("CVE", style="cyan", no_wrap=True)
+    summary.add_column("Published", no_wrap=True)
+    summary.add_column("Severity", no_wrap=True)
     if report.matches:
-        summary = Table(title="POSSIBLE VULNERABILITY MATCHES", box=box.SIMPLE_HEAVY, header_style="bold yellow")
-        summary.add_column("CVE", style="cyan", no_wrap=True)
-        summary.add_column("Vulnerability / advisory name")
-        summary.add_column("Published", no_wrap=True)
-        summary.add_column("Severity", no_wrap=True)
-        summary.add_column("Confidence", no_wrap=True)
-        summary.add_column("CISA KEV", no_wrap=True)
         for match in report.matches:
             summary.add_row(
+                " ".join(match.advisory.title.split()),
                 match.advisory.cve_id,
-                match.advisory.title,
                 match.advisory.published[:10] if match.advisory.published else "Unavailable",
                 match.advisory.severity,
-                match.confidence,
-                "Yes" if match.advisory.known_exploited else "No",
             )
-        console.print(summary)
-
+    else:
+        summary.add_row("No matches at selected severity", "-", "-", "-")
+    console.print(summary)
+    console.print("[dim]Possible matches only; no requests were sent to the assessed asset.[/]")
+    if report.hidden_severity_matches:
+        console.print(
+            f"[dim]{report.hidden_severity_matches} Low or unscored result(s) hidden. "
+            "Use --include-low to show all severities.[/]"
+        )
     if report.offline:
-        console.print("[yellow]Notice: Offline mode:[/] no public sources were queried.")
-    elif report.source_warnings:
-        for warning in report.source_warnings:
-            console.print(f"[yellow]Source notice:[/] {warning}")
-    if not report.matches:
-        console.print(Panel("No possible matches found in available results. This does not establish that the asset is unaffected.", title="[bold yellow]POSSIBLE MATCHES[/]", border_style="yellow"))
-    for match in report.matches:
-        advisory = match.advisory
-        color = {"High": "red", "Medium": "yellow", "Low": "green"}[match.confidence]
-        content = [
-            f"[bold]{advisory.title}[/]",
-            f"[bold]Severity:[/] {advisory.severity}  [bold]Published / updated:[/] {advisory.published or 'Unavailable'} / {advisory.updated or 'Unavailable'}",
-            f"[bold]Match confidence:[/] [{color}]{match.confidence}[/]  [bold]Known exploited:[/] {'Yes — CISA KEV' if advisory.known_exploited else 'Not reported'}",
-            f"[bold]Affected product/version:[/] {'; '.join(item.label() for item in advisory.affected) or 'Unavailable'}",
-            f"[bold]Why it may match:[/] {' '.join(match.why_match)}",
-            f"[bold]Missing evidence:[/] {' '.join(match.missing_evidence) or 'None identified; this is not host-level verification.'}",
-            f"[bold]Conflicting evidence:[/] {' '.join(match.conflicting_evidence) or 'None identified.'}",
-            f"[bold]Remediation:[/] {advisory.remediation or 'Review linked vendor guidance.'}",
-            f"[bold]Vendor advisories:[/] {', '.join(advisory.vendor_advisories) or 'Not identified'}",
-            f"[bold]Primary sources:[/] {', '.join(advisory.references) or 'Unavailable'}",
-            "[bold]Safe verification:[/] Confirm the exact build using an approved inventory or vendor-supported read-only method; do not send test payloads.",
-        ]
-        console.print(Panel("\n".join(content), title=f"[bold magenta]POSSIBLE MATCH — {advisory.cve_id}[/]", border_style=color))
-
-    evidence = "Public records were compared with the supplied observation. No request was sent to the assessed asset."
-    if report.offline:
-        evidence = "No public sources were queried (offline mode)."
+        console.print("[dim]Offline mode: no public sources queried.[/]")
     if report.source_warnings:
-        evidence += "\n" + "\n".join(report.source_warnings)
-    console.print(Panel(evidence, title="[bold blue]EVIDENCE[/]", border_style="blue"))
-    steps = "\n".join(
-        f"{number}. {step}" for number, step in enumerate((
-            "Confirm product, exact build, and patch level using an approved inventory or vendor-supported method.",
-            "Review the linked vendor advisory and compare its affected-version guidance with the observation.",
-            "Use only non-invasive, vendor-documented checks; do not probe or exploit the asset.",
-            "Stay within written authorization and scope; record evidence and uncertainty.",
-        ), 1)
-    )
-    console.print(Panel(steps, title="[bold green]NEXT STEPS[/]", border_style="green"))
-    console.print("[dim]Possible matches are research leads, not proof that a host is vulnerable.[/]")
+        notices = Table(title="Source notices", box=box.SIMPLE)
+        notices.add_column("Source")
+        for warning in report.source_warnings:
+            notices.add_row(warning)
+        console.print(notices)
 
 
 def _render_advisory(advisory: Advisory, source_warnings: list[str], console: Console) -> None:
-    details = Table(show_header=False, box=box.SIMPLE, pad_edge=False)
-    details.add_column("Field", style="cyan", no_wrap=True)
-    details.add_column("Details")
+    details = Table(title="CVE DETAILS", box=box.SIMPLE_HEAVY)
+    details.add_column("Name")
+    details.add_column("Information", max_width=88)
+    details.add_row("CVE", advisory.cve_id)
+    details.add_row("Vulnerability name", " ".join(advisory.title.split())[:120])
     details.add_row("Severity", advisory.severity)
-    details.add_row("Published / updated", f"{advisory.published or 'Unavailable'} / {advisory.updated or 'Unavailable'}")
-    details.add_row("Affected products / versions", "; ".join(item.label() for item in advisory.affected) or "Unavailable")
-    details.add_row("Known exploited", "Yes — CISA KEV" if advisory.known_exploited else "Not reported by queried sources")
-    details.add_row("Remediation", advisory.remediation or "Review the vendor security advisory for supported remediation.")
-    console.print(Panel(details, title=f"[bold magenta]{advisory.cve_id} — ADVISORY DETAILS[/]", border_style="magenta"))
-    console.print(Panel(advisory.description or "No description was returned.", title="[bold blue]DESCRIPTION[/]", border_style="blue"))
-    links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
-    console.print(Panel("\n".join(links) or "No source links were returned.", title="[bold cyan]PRIMARY SOURCES AND VENDOR GUIDANCE[/]", border_style="cyan"))
-    console.print(Panel(
-        "Confirm the installed build using an authorized inventory or vendor-supported, non-invasive method. "
-        "This public advisory does not verify a specific host.",
-        title="[bold green]SAFE VERIFICATION[/]",
-        border_style="green",
-    ))
+    details.add_row("Published", advisory.published[:10] or "Unknown")
+    details.add_row("Updated", advisory.updated[:10] or "Unknown")
+    details.add_row("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed")
+    affected = [item.label() for item in advisory.affected[:3]]
+    if len(advisory.affected) > len(affected):
+        affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD record")
+    details.add_row("Affected ranges", "; ".join(affected) or "See linked advisory")
+    remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
+    details.add_row("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else ""))
+    console.print(details)
+
+    links = Table(title="SOURCE LINKS", box=box.SIMPLE_HEAVY)
+    links.add_column("Name")
+    links.add_column("Link", max_width=88)
+    for link in list(dict.fromkeys(advisory.vendor_advisories + advisory.references)):
+        if "nvd.nist.gov" in link:
+            label = "NVD record"
+        elif "cisa.gov" in link:
+            label = "CISA KEV"
+        elif link in advisory.vendor_advisories:
+            label = "Vendor advisory"
+        else:
+            label = "Source record"
+        links.add_row(label, link)
+    if not links.row_count:
+        links.add_row("Unavailable", "No source links")
+    console.print(links)
+    console.print("[dim]Public advisory only; verify installed versions using an authorized inventory.[/]")
     for warning in source_warnings:
         console.print(f"[yellow]Source notice:[/] {warning}")
 
@@ -382,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
             report = run_research(asset, offline=False, limit=args.limit)
     else:
         report = run_research(asset, offline=args.offline, limit=args.limit)
+    filter_report_severity(report, include_low=args.include_low)
 
     if args.format == "json":
         rendered = to_json(report)

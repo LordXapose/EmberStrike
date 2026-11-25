@@ -9,8 +9,8 @@ from pathlib import Path
 from vuln_research.cli import build_parser, main, render_banner, _observation, _render_rich
 from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
-from vuln_research.reports import to_json, to_markdown, to_plain
-from vuln_research.research import run_research
+from vuln_research.reports import advisory_to_plain, to_json, to_markdown, to_plain
+from vuln_research.research import filter_report_severity, run_research
 from rich.console import Console
 from unittest.mock import patch
 
@@ -46,6 +46,7 @@ class InputTests(unittest.TestCase):
         advisory = Advisory(
             "CVE-2099-1234", "Example advisory",
             published="2099-01-02T03:04:05Z",
+            severity="HIGH (CVSS 3.1)",
         )
         report = ResearchReport(
             asset,
@@ -58,9 +59,10 @@ class InputTests(unittest.TestCase):
                 "search", "-n", "Q4", "-p", "Tomcat", "--non-interactive",
             ])
         self.assertEqual(result, 0)
-        self.assertIn("Vulnerability / advisory name", stdout.getvalue())
+        self.assertIn("Vulnerability name", stdout.getvalue())
         self.assertIn("CVE-2099-1234", stdout.getvalue())
         self.assertIn("2099-01-02", stdout.getvalue())
+        self.assertNotIn("Affected:", stdout.getvalue())
 
     def test_show_subcommand_renders_cve_advisory_without_exploit_steps(self):
         advisory = Advisory(
@@ -78,6 +80,84 @@ class InputTests(unittest.TestCase):
         detail = json.loads(stdout.getvalue())
         self.assertEqual(detail["advisory"]["cve_id"], "CVE-2025-12345")
         self.assertIn("non-invasive", detail["safe_verification"])
+
+    def test_show_plain_report_uses_compact_tables(self):
+        advisory = Advisory(
+            "CVE-2025-12345", "Long example vulnerability title",
+            severity="HIGH (CVSS 3.1)",
+            published="2025-01-02T03:04:05Z",
+            description="A lengthy description that should not be printed in the compact view.",
+            affected=[AffectedRange("Example Vendor", f"Product {index}") for index in range(20)],
+            vendor_advisories=["https://vendor.example/advisory"],
+            references=["https://nvd.nist.gov/vuln/detail/CVE-2025-12345"],
+        )
+        rendered = advisory_to_plain(advisory)
+        self.assertIn("DETAILS FOR CVE-2025-12345", rendered)
+        self.assertIn("SOURCE LINKS", rendered)
+        self.assertIn("https://vendor.example/advisory", rendered)
+        self.assertIn("and 17 more", rendered)
+        self.assertNotIn("lengthy description", rendered)
+        self.assertNotIn("Product 19", rendered)
+
+    def test_default_search_hides_low_severity_and_include_low_restores_it(self):
+        low_advisory = Advisory(
+            "CVE-2099-0001", "Low example",
+            severity="LOW (CVSS 3.1)", published="2099-01-01",
+        )
+        high_advisory = Advisory(
+            "CVE-2099-0002", "High example",
+            severity="HIGH (CVSS 3.1)", published="2099-01-02",
+        )
+        source_report = ResearchReport(
+            AssetObservation(assessment="Q4", product="Tomcat"),
+            [
+                PossibleMatch(low_advisory, "Low", [], [], []),
+                PossibleMatch(high_advisory, "Medium", [], [], []),
+            ],
+        )
+        report = filter_report_severity(source_report)
+        self.assertEqual([item.advisory.cve_id for item in report.matches], ["CVE-2099-0002"])
+        self.assertEqual(report.hidden_severity_matches, 1)
+
+        all_report = ResearchReport(
+            AssetObservation(assessment="Q4", product="Tomcat"),
+            [
+                PossibleMatch(low_advisory, "Low", [], [], []),
+                PossibleMatch(high_advisory, "Medium", [], [], []),
+            ],
+        )
+        filter_report_severity(all_report, include_low=True)
+        self.assertEqual(len(all_report.matches), 2)
+        self.assertEqual(all_report.hidden_severity_matches, 0)
+        self.assertTrue(build_parser().parse_args(["--include-low"]).include_low)
+
+    def test_search_include_low_flag_changes_cli_table(self):
+        def make_report():
+            return ResearchReport(
+                AssetObservation(assessment="Q4", product="Tomcat"),
+                [
+                    PossibleMatch(
+                        Advisory("CVE-2099-0011", "Low item", severity="LOW"),
+                        "Medium", [], [], [],
+                    ),
+                    PossibleMatch(
+                        Advisory("CVE-2099-0012", "Medium item", severity="MEDIUM"),
+                        "High", [], [], [],
+                    ),
+                ],
+            )
+
+        for extra_args, expected_low in (([], False), (["--include-low"], True)):
+            stdout = io.StringIO()
+            with patch("vuln_research.cli.run_research", return_value=make_report()), \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                result = main([
+                    "search", "-n", "Q4", "-p", "Tomcat", "--non-interactive",
+                    *extra_args,
+                ])
+            self.assertEqual(result, 0)
+            self.assertEqual("CVE-2099-0011" in stdout.getvalue(), expected_low)
+            self.assertIn("CVE-2099-0012", stdout.getvalue())
 
     def test_flags_build_observation(self):
         args = build_parser().parse_args([
@@ -126,15 +206,15 @@ class ReportTests(unittest.TestCase):
 
     def test_all_formats_include_possible_match_and_safety_language(self):
         self.assertIn("CVE-2099-1234", to_json(self.report))
-        self.assertIn("POSSIBLE MATCHES", to_markdown(self.report))
-        self.assertIn("written authorization", to_markdown(self.report))
-        self.assertIn("| CVE | Vulnerability / advisory name | Published |", to_markdown(self.report))
+        self.assertIn("Possible Vulnerability Matches", to_markdown(self.report))
+        self.assertIn("does not confirm", to_markdown(self.report))
+        self.assertIn("| Vulnerability name | CVE | Published |", to_markdown(self.report))
         plain = to_plain(self.report)
-        self.assertIn("POSSIBLE VULNERABILITY MATCHES", plain)
-        self.assertIn("Vulnerability / advisory name", plain)
+        self.assertIn("POSSIBLE VULNERABILITIES", plain)
+        self.assertIn("Vulnerability name", plain)
         self.assertIn("Published", plain)
         self.assertIn("Example advisory", plain)
-        self.assertIn("not proof", to_plain(self.report))
+        self.assertNotIn("Affected:", plain)
 
     def test_json_file_saving_keeps_stdout_machine_readable(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,9 +234,11 @@ class ReportTests(unittest.TestCase):
         output = io.StringIO()
         console = Console(file=output, no_color=True, width=120)
         _render_rich(self.report, console)
-        self.assertIn("POSSIBLE VULNERABILITY MATCHES", output.getvalue())
+        self.assertIn("POSSIBLE VULNERABILITIES", output.getvalue())
         self.assertIn("CVE-2099-1234", output.getvalue())
         self.assertIn("Published", output.getvalue())
+        self.assertNotIn("Missing evidence", output.getvalue())
+        self.assertNotIn("NEXT STEPS", output.getvalue())
         self.assertNotRegex(output.getvalue(), re.compile(r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF]"))
 
 

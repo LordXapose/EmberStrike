@@ -4,12 +4,30 @@ from dataclasses import asdict
 from .models import Advisory, ResearchReport
 
 
-NEXT_STEPS = [
-    "Confirm the product, exact build, and patch level using an approved inventory or vendor-supported method.",
-    "Review the linked vendor advisory and compare its affected-version guidance with the observed asset.",
-    "Use only non-invasive, vendor-documented checks; do not probe or exploit the asset as part of this report.",
-    "Record the evidence and any uncertainty, and remain within written authorization and scope.",
-]
+def _short_name(value: str, width: int = 48) -> str:
+    value = " ".join(value.split())
+    return value if len(value) <= width else value[:width - 3] + "..."
+
+
+def _ascii_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> list[str]:
+    widths = tuple(
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        for index in range(len(headers))
+    )
+    border = "+-" + "-+-".join("-" * width for width in widths) + "-+"
+    output = [border]
+    output.append("| " + " | ".join(value.ljust(widths[index]) for index, value in enumerate(headers)) + " |")
+    output.append(border)
+    output.extend(
+        "| " + " | ".join(value.ljust(widths[index]) for index, value in enumerate(row)) + " |"
+        for row in rows
+    )
+    output.append(border)
+    return output
+
+
+def _published_date(value: str) -> str:
+    return value[:10] if value else "Unknown"
 
 
 def to_json(report: ResearchReport) -> str:
@@ -17,139 +35,64 @@ def to_json(report: ResearchReport) -> str:
 
 
 def to_markdown(report: ResearchReport) -> str:
-    asset = report.asset
     lines = [
-        "# EmberStrike — Vulnerability research report",
+        "# EmberStrike — Possible Vulnerability Matches",
         "",
-        "> Research aid only. All findings are possible matches, not confirmation that an asset is vulnerable.",
-        "> Use only within written authorization and scope. This tool does not contact the assessed asset.",
+        "> Possible matches only; this does not confirm that an asset is vulnerable.",
+        "> No request is sent to the asset. Stay within written authorization and scope.",
         "",
-        "## ASSET",
-        f"- **Assessment:** {asset.assessment}",
-        f"- **Scope notes:** {asset.scope_notes or 'Not provided'}",
-        f"- **Asset:** {asset.asset or 'Not provided'}",
-        f"- **Service:** {' '.join(part for part in (asset.service, asset.product) if part) or 'Not provided'}",
-        f"- **Vendor / version / build:** {' / '.join(part or 'Not provided' for part in (asset.vendor, asset.version, asset.build))}",
-        f"- **Port / protocol:** {str(asset.port) if asset.port is not None else 'Not provided'} / {asset.protocol or 'Not provided'}",
-        f"- **Platform:** {asset.platform or 'Not provided'}",
-        f"- **Modules / configuration:** {asset.modules or 'Not provided'}",
-        f"- **Identified by / confidence:** {asset.identified_by or 'Not provided'} / {asset.confidence}",
-        "",
-        "## POSSIBLE MATCHES",
     ]
     if report.offline:
-        lines += ["", "Offline mode was selected; no public sources were queried."]
-    elif not report.matches:
-        lines += ["", "No possible matches were found in the available source results. This does not establish that the asset is unaffected."]
+        lines += ["Offline mode: no public sources were queried.", ""]
+    if report.hidden_severity_matches:
+        lines += [
+            f"{report.hidden_severity_matches} low or unscored result(s) hidden. Re-run with `--include-low` to show them.",
+            "",
+        ]
     if report.matches:
         lines += [
-            "",
-            "| CVE | Vulnerability / advisory name | Published | Severity | Match |",
-            "| --- | --- | --- | --- | --- |",
+            "| Vulnerability name | CVE | Published | Severity |",
+            "| --- | --- | --- | --- |",
         ]
         for match in report.matches:
             advisory = match.advisory
-            title = " ".join(advisory.title.split()).replace("|", "\\|")
-            published = advisory.published[:10] if advisory.published else "Unavailable"
+            title = _short_name(advisory.title).replace("|", "\\|")
             lines.append(
-                f"| {advisory.cve_id} | {title} | {published} | {advisory.severity} | {match.confidence} |"
+                f"| {title} | {advisory.cve_id} | {_published_date(advisory.published)} | {advisory.severity} |"
             )
-        lines.append("")
-    for match in report.matches:
-        advisory = match.advisory
-        lines += [
-            "",
-            f"### {advisory.cve_id} — {advisory.title}",
-            f"- **Severity:** {advisory.severity}",
-            f"- **Published / updated:** {advisory.published or 'Unavailable'} / {advisory.updated or 'Unavailable'}",
-            f"- **Match confidence:** {match.confidence}",
-            f"- **Known exploitation:** {'Yes — ' + advisory.exploitation_note if advisory.known_exploited else 'Not reported by the queried trusted sources'}",
-            f"- **Affected product/version:** {'; '.join(item.label() for item in advisory.affected) or 'Unavailable'}",
-            f"- **Why it may match:** {' '.join(match.why_match) or 'Insufficient product-specific evidence.'}",
-            f"- **Missing evidence:** {' '.join(match.missing_evidence) or 'No additional evidence gaps identified; this is still not host-level verification.'}",
-            f"- **Conflicting evidence:** {' '.join(match.conflicting_evidence) or 'None identified from the supplied details.'}",
-            f"- **Remediation guidance:** {advisory.remediation or 'Review the vendor advisory and follow its supported upgrade or mitigation guidance.'}",
-            f"- **Vendor advisory links:** {', '.join(advisory.vendor_advisories) or 'No vendor advisory link was identified.'}",
-            f"- **Primary source links:** {', '.join(advisory.references) or 'Unavailable'}",
-            "- **Safe verification:** Confirm the installed package/build through an authorized inventory or vendor-supported read-only method, then compare with the linked advisory. Do not send test payloads.",
-        ]
-    lines += ["", "## EVIDENCE", ""]
-    if report.source_warnings:
-        lines.extend(f"- Source limitation: {warning}" for warning in report.source_warnings)
-    elif report.offline:
-        lines.append("- No sources were queried (offline mode).")
     else:
-        lines.append("- Public-source records and the supplied observation were compared. No request was sent to the assessed asset.")
-    lines += ["", "## NEXT STEPS"]
-    lines.extend(f"{number}. {step}" for number, step in enumerate(NEXT_STEPS, 1))
+        lines += ["No matching records at the selected severity. This does not establish that the asset is unaffected."]
+    if report.source_warnings:
+        lines += ["", "Source notices:"]
+        lines.extend(f"- {warning}" for warning in report.source_warnings)
     return "\n".join(lines)
 
 
 def to_plain(report: ResearchReport) -> str:
-    # Plain output is a compact, ANSI-free rendering suitable for logs and redirected output.
     lines = [
-        "EMBERSTRIKE — VULNERABILITY RESEARCH REPORT",
-        "Research aid only: all findings are possible matches, not proof of vulnerability.",
-        "No request is sent to the assessed asset. Stay within written authorization and scope.",
-        "",
-        "ASSET",
-        f"Assessment: {report.asset.assessment}",
-        f"Scope: {report.asset.scope_notes or 'Not provided'}",
-        f"Asset: {report.asset.asset or 'Not provided'}",
-        f"Service/product: {' '.join(part for part in (report.asset.service, report.asset.product) if part) or 'Not provided'}",
-        f"Vendor/version/build: {' / '.join(part or 'Not provided' for part in (report.asset.vendor, report.asset.version, report.asset.build))}",
-        f"Port/protocol: {report.asset.port or 'Not provided'} / {report.asset.protocol or 'Not provided'}",
-        "",
-        "POSSIBLE VULNERABILITY MATCHES",
+        "POSSIBLE VULNERABILITIES",
+        "Possible matches only; no requests were sent to the assessed asset.",
     ]
     if report.offline:
         lines.append("Offline mode: no public sources were queried.")
-    if not report.matches and not report.offline:
-        lines.append("No possible matches found in available results; this does not establish that the asset is unaffected.")
+    if report.hidden_severity_matches:
+        lines.append(
+            f"{report.hidden_severity_matches} low or unscored result(s) hidden; use --include-low to show all severities."
+        )
     if report.matches:
         rows = [
             (
+                _short_name(match.advisory.title),
                 match.advisory.cve_id,
-                " ".join(match.advisory.title.split()),
-                match.advisory.published[:10] if match.advisory.published else "Unavailable",
+                _published_date(match.advisory.published),
                 match.advisory.severity,
-                match.confidence,
             )
             for match in report.matches
         ]
-        headers = ("CVE", "Vulnerability / advisory name", "Published", "Severity", "Match")
-        widths = tuple(
-            max(len(headers[index]), *(len(row[index]) for row in rows))
-            for index in range(len(headers))
-        )
-        lines.append(" | ".join(value.ljust(widths[index]) for index, value in enumerate(headers)))
-        lines.append("-+-".join("-" * width for width in widths))
-        lines.extend(
-            " | ".join(value.ljust(widths[index]) for index, value in enumerate(row))
-            for row in rows
-        )
-        lines.append("All entries are possible matches, not confirmation that an asset is vulnerable.")
-        lines.append("")
-    for match in report.matches:
-        advisory = match.advisory
-        lines += [
-            f"{advisory.cve_id} | {advisory.title}",
-            f"  Severity: {advisory.severity} | Confidence: {match.confidence} | Published: {advisory.published or 'Unavailable'}",
-            f"  Affected: {'; '.join(item.label() for item in advisory.affected) or 'Unavailable'}",
-            f"  Why: {' '.join(match.why_match)}",
-            f"  Missing evidence: {' '.join(match.missing_evidence) or 'None identified'}",
-            f"  Conflicts: {' '.join(match.conflicting_evidence) or 'None identified'}",
-            f"  Exploitation status: {'Known exploited — CISA KEV' if advisory.known_exploited else 'Not reported'}",
-            f"  Remediation: {advisory.remediation or 'Review linked vendor guidance.'}",
-            f"  Sources: {', '.join(advisory.vendor_advisories + advisory.references) or 'Unavailable'}",
-            "  Safe verification: Check installed build with an approved inventory/vendor-supported method; do not send test payloads.",
-        ]
-    lines += ["", "EVIDENCE"]
+        lines.extend(_ascii_table(("Vulnerability name", "CVE", "Published", "Severity"), rows))
+    elif not report.offline:
+        lines.append("No Critical, High, or Medium records found. Use --include-low to view all results.")
     lines.extend(f"- {warning}" for warning in report.source_warnings)
-    if not report.source_warnings and not report.offline:
-        lines.append("- Public-source records compared with supplied details; the asset was not contacted.")
-    lines += ["", "NEXT STEPS"]
-    lines.extend(f"{number}. {step}" for number, step in enumerate(NEXT_STEPS, 1))
     return "\n".join(lines)
 
 
@@ -167,33 +110,37 @@ def advisory_to_json(advisory: Advisory, source_warnings: list[str] | None = Non
 
 
 def advisory_to_markdown(advisory: Advisory, source_warnings: list[str] | None = None) -> str:
-    affected = "; ".join(item.label() for item in advisory.affected) or "Unavailable"
+    affected = [item.label() for item in advisory.affected[:3]]
+    if len(advisory.affected) > len(affected):
+        affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD record")
+    remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
+    rows = [
+        ("CVE", advisory.cve_id),
+        ("Vulnerability name", _short_name(advisory.title, 120)),
+        ("Severity", advisory.severity),
+        ("Published", _published_date(advisory.published)),
+        ("Updated", _published_date(advisory.updated)),
+        ("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed"),
+        ("Affected ranges", "; ".join(affected) or "See linked advisory"),
+        ("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else "")),
+    ]
     lines = [
-        f"# {advisory.cve_id} — {advisory.title}",
+        f"# {advisory.cve_id} — {_short_name(advisory.title, 120)}",
         "",
-        "> Public advisory information only. This does not verify that a particular host is vulnerable.",
+        "> Public advisory only; this does not verify a specific host.",
         "",
-        "## ADVISORY DETAILS",
-        f"- **Severity:** {advisory.severity}",
-        f"- **Published / updated:** {advisory.published or 'Unavailable'} / {advisory.updated or 'Unavailable'}",
-        f"- **Affected products / versions:** {affected}",
-        f"- **Known exploited:** {'Yes — listed in CISA KEV. ' + advisory.exploitation_note if advisory.known_exploited else 'Not reported by the queried sources'}",
-        f"- **Remediation:** {advisory.remediation or 'Review the vendor security advisory for supported remediation.'}",
-        "",
-        "## DESCRIPTION",
-        advisory.description or "No description was returned by the queried sources.",
-        "",
-        "## PRIMARY SOURCES AND VENDOR GUIDANCE",
+        "| Name | Information |",
+        "| --- | --- |",
     ]
-    links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
-    lines.extend(f"- {link}" for link in links)
+    for name, value in rows:
+        escaped_value = " ".join(value.split()).replace("|", "\\|")
+        lines.append(f"| {name} | {escaped_value} |")
+    lines += ["", "## SOURCE LINKS"]
+    links = _advisory_links(advisory)
+    lines += ["| Name | Link |", "| --- | --- |"]
+    lines.extend(f"| {name} | {link} |" for name, link in links)
     if not links:
-        lines.append("- No source links were returned.")
-    lines += [
-        "",
-        "## SAFE VERIFICATION",
-        "Confirm the installed build using an authorized inventory or vendor-supported, non-invasive method. Do not treat this public advisory as host-level confirmation.",
-    ]
+        lines.append("| Unavailable | No source links |")
     if source_warnings:
         lines += ["", "## SOURCE NOTICES"]
         lines.extend(f"- {warning}" for warning in source_warnings)
@@ -201,30 +148,43 @@ def advisory_to_markdown(advisory: Advisory, source_warnings: list[str] | None =
 
 
 def advisory_to_plain(advisory: Advisory, source_warnings: list[str] | None = None) -> str:
-    affected = "; ".join(item.label() for item in advisory.affected) or "Unavailable"
-    links = list(dict.fromkeys(advisory.vendor_advisories + advisory.references))
-    lines = [
-        f"{advisory.cve_id} — {advisory.title}",
-        "Public advisory details only; this does not verify a specific host.",
-        "",
-        "ADVISORY DETAILS",
-        f"Severity: {advisory.severity}",
-        f"Published / updated: {advisory.published or 'Unavailable'} / {advisory.updated or 'Unavailable'}",
-        f"Affected products / versions: {affected}",
-        f"Known exploited: {'Yes — CISA KEV' if advisory.known_exploited else 'Not reported by the queried sources'}",
-        f"Remediation: {advisory.remediation or 'Review the vendor security advisory for supported remediation.'}",
-        "",
-        "DESCRIPTION",
-        advisory.description or "No description was returned by the queried sources.",
-        "",
-        "PRIMARY SOURCES AND VENDOR GUIDANCE",
+    affected = [item.label() for item in advisory.affected[:3]]
+    if len(advisory.affected) > len(affected):
+        affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD record")
+    remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
+    rows = [
+        ("CVE", advisory.cve_id),
+        ("Vulnerability name", _short_name(advisory.title, 120)),
+        ("Severity", advisory.severity),
+        ("Published", _published_date(advisory.published)),
+        ("Updated", _published_date(advisory.updated)),
+        ("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed"),
+        ("Affected ranges", "; ".join(affected) or "See linked advisory"),
+        ("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else "")),
     ]
-    lines.extend(links or ["No source links were returned."])
-    lines.extend([
+    lines = [
+        f"DETAILS FOR {advisory.cve_id}",
+        "Public advisory only; this does not verify a specific host.",
+        *_ascii_table(("Name", "Information"), rows),
         "",
-        "SAFE VERIFICATION",
-        "Confirm the installed build using an authorized inventory or vendor-supported, non-invasive method.",
-    ])
+        "SOURCE LINKS",
+        *_ascii_table(("Name", "Link"), _advisory_links(advisory) or [("Unavailable", "No source links")]),
+    ]
     if source_warnings:
-        lines.extend(["", "SOURCE NOTICES", *source_warnings])
+        lines.extend(["", "SOURCE NOTICES", *_ascii_table(("Notice",), [(warning,) for warning in source_warnings])])
     return "\n".join(lines)
+
+
+def _advisory_links(advisory: Advisory) -> list[tuple[str, str]]:
+    links = []
+    for link in list(dict.fromkeys(advisory.vendor_advisories + advisory.references)):
+        if "nvd.nist.gov" in link:
+            label = "NVD record"
+        elif "cisa.gov" in link:
+            label = "CISA KEV"
+        elif link in advisory.vendor_advisories:
+            label = "Vendor advisory"
+        else:
+            label = "Source record"
+        links.append((label, link))
+    return links

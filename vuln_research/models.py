@@ -79,6 +79,7 @@ class ResearchReport:
     matches: list[PossibleMatch]
     source_warnings: list[str] = field(default_factory=list)
     offline: bool = False
+    hidden_severity_matches: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
