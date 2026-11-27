@@ -1,7 +1,7 @@
 import re
-from packaging.version import InvalidVersion, Version
 
 from .models import Advisory, AssetObservation, PossibleMatch
+from .versioning import compare_versions
 
 
 _PRODUCT_GROUPS = (
@@ -62,33 +62,41 @@ def _description_mentions_product(description: str, product: str) -> bool:
     )
 
 
-def _version_in_range(version: str, affected) -> bool | None:
+def _version_in_range(version: str, affected, platform: str = "") -> bool | None:
     if not version:
         return None
     if affected.version and affected.version not in ("*", "-"):
-        try:
-            return Version(version) == Version(affected.version)
-        except InvalidVersion:
-            return _normalize(version) == _normalize(affected.version)
+        comparison = compare_versions(version, affected.version, platform)
+        if comparison is not None:
+            return comparison == 0
+        return True if _normalize(version) == _normalize(affected.version) else None
     bounds = (
         affected.start_including, affected.start_excluding,
         affected.end_including, affected.end_excluding,
     )
     if not any(bounds):
         return None
-    try:
-        observed = Version(version)
-        if affected.start_including and observed < Version(affected.start_including):
+    observed_bounds = (
+        (affected.start_including, "lower-inclusive"),
+        (affected.start_excluding, "lower-exclusive"),
+        (affected.end_including, "upper-inclusive"),
+        (affected.end_excluding, "upper-exclusive"),
+    )
+    for bound, kind in observed_bounds:
+        if not bound:
+            continue
+        comparison = compare_versions(version, bound, platform)
+        if comparison is None:
+            return None
+        if kind == "lower-inclusive" and comparison < 0:
             return False
-        if affected.start_excluding and observed <= Version(affected.start_excluding):
+        if kind == "lower-exclusive" and comparison <= 0:
             return False
-        if affected.end_including and observed > Version(affected.end_including):
+        if kind == "upper-inclusive" and comparison > 0:
             return False
-        if affected.end_excluding and observed >= Version(affected.end_excluding):
+        if kind == "upper-exclusive" and comparison >= 0:
             return False
-        return True
-    except InvalidVersion:
-        return None
+    return True
 
 
 def _unique_affected(affected):
@@ -96,9 +104,12 @@ def _unique_affected(affected):
     seen = set()
     for item in affected:
         key = (
-            item.vendor, item.product, item.version,
-            item.start_including, item.start_excluding,
-            item.end_including, item.end_excluding,
+            _normalize(item.vendor), _normalize(item.product),
+            item.version.strip().casefold(),
+            item.start_including.strip().casefold(),
+            item.start_excluding.strip().casefold(),
+            item.end_including.strip().casefold(),
+            item.end_excluding.strip().casefold(),
         )
         if key not in seen:
             seen.add(key)
@@ -137,7 +148,10 @@ def match_advisory(advisory: Advisory, asset: AssetObservation) -> PossibleMatch
     if advisory.known_exploited:
         why.append("CISA lists this CVE in its Known Exploited Vulnerabilities catalog.")
 
-    version_checks = [_version_in_range(asset.version, item) for item in products]
+    version_checks = [
+        _version_in_range(asset.version, item, asset.platform)
+        for item in products
+    ]
     in_range = any(result is True for result in version_checks)
     known_outside = bool(asset.version and version_checks and all(result is False for result in version_checks))
     missing = []

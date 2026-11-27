@@ -5,6 +5,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from vuln_research.cli import (
     _observation,
@@ -24,7 +25,6 @@ from vuln_research.selectable_table import (
     random_palette,
 )
 from rich.console import Console
-from unittest.mock import patch
 
 
 class InputTests(unittest.TestCase):
@@ -92,6 +92,44 @@ class InputTests(unittest.TestCase):
         detail = json.loads(stdout.getvalue())
         self.assertEqual(detail["advisory"]["cve_id"], "CVE-2025-12345")
         self.assertIn("non-invasive", detail["safe_verification"])
+
+    def test_show_supports_offline_cache_only_lookup(self):
+        advisory = Advisory("CVE-2025-12345", "Sample advisory")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch("vuln_research.cli.nvd.lookup", return_value=advisory) as lookup, \
+             patch("vuln_research.cli.cisa_kev.fetch_all", return_value=[]) as kev, \
+             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = main(["show", "CVE-2025-12345", "--offline", "--format", "json"])
+        self.assertEqual(result, 0)
+        detail = json.loads(stdout.getvalue())
+        self.assertTrue(any("cache-only lookup" in item for item in detail["source_warnings"]))
+        lookup.assert_called_once_with("CVE-2025-12345", offline=True, refresh=False)
+        kev.assert_called_once_with(offline=True, refresh=False)
+
+    def test_cache_command_reports_and_clears_empty_cache(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            "os.environ", {"EMBERSTRIKE_CACHE_DIR": directory}
+        ):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                result = main(["cache"])
+            self.assertEqual(result, 0)
+            self.assertIn("No cached public-source responses", stdout.getvalue())
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                result = main(["cache", "clear"])
+            self.assertEqual(result, 0)
+            self.assertIn("Cleared 0 cached response(s)", stdout.getvalue())
+
+    def test_offline_and_refresh_cache_are_mutually_exclusive(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as error:
+            main([
+                "search", "-n", "Q4", "-p", "Tomcat",
+                "--offline", "--refresh-cache",
+            ])
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn("cannot be used with --refresh-cache", stderr.getvalue())
 
     def test_show_plain_report_uses_compact_tables(self):
         advisory = Advisory(

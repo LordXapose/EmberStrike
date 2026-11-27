@@ -38,7 +38,7 @@ The tool only contacts public vulnerability-data sources. It never connects to o
 | Public sources | NVD CVE records and CISA KEV catalog |
 | Interface | Interactive terminal prompts, compact Rich tables, and selectable result rows |
 | Output | Plain text, JSON, or Markdown; reports can be saved locally |
-| Offline support | `--offline` skips public-source lookups |
+| Offline support | `--offline` uses matching local responses only and never accesses the network |
 | Safety boundary | No target scanning, target requests, exploit payloads, or credentials |
 
 ### Main capabilities
@@ -49,6 +49,7 @@ The tool only contacts public vulnerability-data sources. It never connects to o
 - Use Up/Down and Enter in an interactive terminal to select a result and view its details and source links.
 - View a CVE directly with `emberstrike show CVE-ID`.
 - Export plain, JSON, or Markdown reports; use `--include-low` to show Low and unscored severity results.
+- Reuse public-source responses from a 24-hour local cache, inspect cache age, refresh entries, or clear the cache.
 - See source outages and rate limits as notices rather than invented or success-shaped results.
 
 ### Technology stack
@@ -59,7 +60,7 @@ The tool only contacts public vulnerability-data sources. It never connects to o
 | Terminal tables | Rich | Colored tables and readable terminal output |
 | Interactive selection | prompt-toolkit | Arrow-key navigation and keyboard controls |
 | Shell completion | argcomplete | Service, product, and vendor suggestions |
-| Version handling | packaging | Compare interpretable version strings |
+| Version handling | packaging + EmberStrike version comparators | PEP 440 and conservative Debian/Ubuntu package comparisons |
 | Unit tests | unittest | Input, matching, source parsing, and report behavior |
 | Vulnerability data | NVD and CISA KEV | Public CVE and known-exploited records |
 
@@ -99,7 +100,7 @@ EmberStrike/
 ├── tests/
 │   ├── test_matching.py         # Product/version matching behavior
 │   ├── test_reports_cli.py      # Inputs, CLI commands, tables, and report formats
-│   └── test_sources.py          # Public-source parsing and pagination
+│   └── test_sources.py          # Public-source parsing, pagination, and caching
 └── vuln_research/
     ├── __init__.py
     ├── __main__.py              # python -m vuln_research entry point
@@ -111,6 +112,8 @@ EmberStrike/
     ├── reports.py               # Plain, JSON, and Markdown serialization
     ├── research.py              # Source orchestration and severity filtering
     ├── selectable_table.py      # Rich tables and keyboard navigation
+    ├── versioning.py            # Conservative PEP 440 and Debian version comparison
+    ├── cache.py                 # Local public-source response cache and status
     └── sources/
         ├── __init__.py
         ├── base.py              # Public-source HTTP and error handling
@@ -155,6 +158,7 @@ emberstrike search \
 emberstrike search -n "Include all severities" -p "Apache Tomcat" --include-low
 emberstrike services
 emberstrike show CVE-2023-42794
+emberstrike cache
 ```
 
 `-n` sets the assessment name, `-s` the observed service/protocol, `-p` the product, `-v` the vendor, `-V` the observed version, and `-c` the observation confidence. Long options remain available. `services` displays common service and product suggestions; the list is not exhaustive, and you can enter names not listed. `search` displays a compact table of vulnerability name, CVE ID, publication date, and severity. By default, Critical, High, and Medium severity records are shown; Low or unscored records are hidden. Add `--include-low` to include them. These are vulnerability advisory names, not exploit or proof-of-concept names. To inspect one CVE, use `emberstrike show CVE-ID`; its output is limited to a boxed details table and a source-name/link table. JSON output remains available for full structured records. EmberStrike does not provide exploit instructions, payloads, or proof-of-concept links.
@@ -176,7 +180,16 @@ emberstrike \
   --format markdown --output report.md
 ```
 
-Choose `--format plain`, `json`, or `markdown`. By default, EmberStrike shows Critical, High, and Medium severity records in a compact table; Low and unscored severities are hidden. Add `--include-low` to include them. `--limit 25` caps the number of matches. `--output FILE` saves that format locally and also prints the report. Use `--offline` to skip public-source requests, `--no-color` to disable color, or set `NO_COLOR` in the environment. `--non-interactive` disables prompts; it is useful for scripts. Run `emberstrike --help` for all input flags and examples.
+Choose `--format plain`, `json`, or `markdown`. By default, EmberStrike shows Critical, High, and Medium severity records in a compact table; Low and unscored severities are hidden. Add `--include-low` to include them. `--limit 25` caps the number of matches. `--output FILE` saves that format locally and also prints the report. Use `--offline` to use only cache entries matching the same query; it never accesses the network. `--refresh-cache` forces a public-source update, with stale cached data used and clearly marked if refresh fails. These options cannot be combined. Use `--no-color` to disable color, or set `NO_COLOR` in the environment. `--non-interactive` disables prompts; it is useful for scripts. Run `emberstrike --help` for all input flags and examples.
+
+The local response cache is fresh for 24 hours by default. Inspect or clear it with:
+
+```bash
+emberstrike cache
+emberstrike cache clear
+```
+
+Cache files are stored under `${XDG_CACHE_HOME:-~/.cache}/emberstrike` unless `EMBERSTRIKE_CACHE_DIR` is set. Cached NVD search pages are specific to their query; an offline search can only reuse pages previously requested with the same search terms.
 
 ### Tab completion
 
@@ -212,6 +225,8 @@ Completion suggests common names; custom service and product names remain accept
 | `emberstrike search [OPTIONS]` | Run the same research flow with an explicit `search` command. |
 | `emberstrike services` | List common service types and product suggestions. This list is not exhaustive. |
 | `emberstrike show CVE-ID` | Retrieve public details for one CVE, including affected versions and remediation. |
+| `emberstrike cache` | Show cached public-source responses and their ages. |
+| `emberstrike cache clear` | Clear EmberStrike's local public-source cache. |
 | `emberstrike COMMAND --help` | Show help and options for a command. |
 
 ### Search options
@@ -241,13 +256,14 @@ Completion suggests common names; custom service and product names remain accept
 | --- | --- |
 | `--format` | Output as `plain`, `json`, or `markdown` (default: `plain`). |
 | `--output FILE` | Save the report locally; the report is also printed. |
-| `--offline` | Skip all public-source queries. |
+| `--offline` | Use matching cached responses only; never access the network. |
+| `--refresh-cache` | Refresh matching cache entries from public sources; cannot be combined with `--offline`. |
 | `--no-color` | Disable terminal color; `NO_COLOR` is also respected. |
 | `--limit N` | Cap the number of possible matches (default: show all retrieved matches). |
 | `--include-low` | Include Low and unscored severity results; hidden by default. |
 | `--non-interactive` | Do not prompt; return a clear error if required inputs are missing. |
 
-Run `emberstrike search --help` for the full search help. `show` accepts `--format`, `--output`, and `--no-color`; `services` accepts `--no-color`.
+Run `emberstrike search --help` for the full search help. `show` accepts `--format`, `--output`, `--no-color`, `--offline`, and `--refresh-cache`; `services` accepts `--no-color`. `emberstrike cache [status|clear]` inspects or deletes EmberStrike's local cache.
 
 ## How to read matches
 
@@ -255,6 +271,7 @@ Run `emberstrike search --help` for the full search help. `show` accepts `--form
 - Version ranges are compared only when source data provides a range the tool can interpret. Unknown or vendor-specific version formats remain uncertain.
 - Build and patch details matter: distributions may backport fixes without changing an upstream version string. Review vendor guidance before drawing conclusions.
 - CISA KEV status is shown only when the CVE appears in that catalog. Source outages, rate limits, and offline use are reported without fabricating records.
+- Source status identifies cache hits, refreshed data, offline reuse, and stale-cache fallback with cache ages.
 - Safe verification means checking an approved inventory or vendor-supported, non-invasive method. This tool provides no exploit steps.
 
 ## Privacy and safety
@@ -262,8 +279,9 @@ Run `emberstrike search --help` for the full search help. `show` accepts `--form
 - Use EmberStrike only for assessments covered by your written authorization and scope.
 - Enter only service details that you are authorized to assess; never enter credentials or secrets.
 - The tool makes no connection to an assessed hostname or IP address.
-- Online `search` sends the vendor/product or service keyword to NVD. `show` sends the requested CVE ID to NVD; both commands fetch the CISA KEV catalog. Use `--offline` to skip public-source requests for a search.
+- Online `search` sends the vendor/product or service keyword to NVD. `show` sends the requested CVE ID to NVD; both commands fetch the CISA KEV catalog. `--offline` reads matching cache files only and never makes public-source requests.
 - Other observation fields and generated reports are not uploaded; reports are stored locally only when you request `--output`.
+- Cache files contain public-source responses, are stored locally with owner-only permissions where supported, and can be removed with `emberstrike cache clear`.
 - Results are possible matches, not proof that a system is vulnerable. Confirm with authoritative inventory and vendor guidance.
 - No exploit payloads, target-scanning features, or instructions for gaining access are provided.
 
@@ -273,21 +291,20 @@ Items are labeled as implemented or planned; planned work is not currently avail
 
 ### 1. Match accuracy
 
-- Initial Stage 1 work is implemented: exact product matching with a small explicit alias set, escaped-colon CPE parsing, and NVD pagination.
-- Implemented: standard exact-version spellings are compared using normalized version semantics, inclusive/exclusive range endpoints are checked, and unparseable vendor versions remain uncertain rather than being inferred as affected.
-- Planned: improve ecosystem-specific affected-version parsing and deduplication.
-- Planned: continue treating unfamiliar or vendor-specific versions conservatively; never infer that an unparseable version is affected.
+- Implemented: exact product matching with a small explicit alias set, escaped-colon CPE parsing, and NVD pagination.
+- Implemented: PEP 440 exact/range comparison, Debian/Ubuntu package ordering when indicated by the platform or version string, and normalized duplicate affected-entry removal.
+- Implemented: inclusive/exclusive boundaries and conservative handling of unparseable or RPM-specific versions, covered by regression tests.
+- Planned: expand version support only for additional ecosystems with reliable source and platform evidence; do not infer package equivalence.
 - Distinguish product match, version match, and host verification, and explain what evidence supports each confidence level.
-- Test ambiguous product names, vendor forks, backported fixes, missing versions, and conflicting evidence.
+- Planned: add broader tests for vendor forks, distro backports, missing versions, and conflicting evidence.
 
 **Milestone:** matches show their supporting evidence and uncertainty, while unsupported matches are filtered or clearly qualified.
 
 ### 2. Source reliability and completeness
 
-- Add local caching with refresh controls and clear cache age indicators.
-- Avoid downloading the full CISA KEV catalog for each individual `show` lookup.
-- Distinguish source outages, rate limits, skipped/offline sources, and successful searches.
-- Add bounded retries and respect public API guidance.
+- Implemented: 24-hour local response cache, offline reuse, forced refresh, cache status/clear commands, age indicators, and clearly reported stale-cache fallback.
+- Planned: use conditional HTTP requests where supported to reduce downloads when cached entries expire.
+- Planned: distinguish all source failures consistently and add bounded retries that respect public API guidance.
 
 **Milestone:** a source failure is never presented as evidence that no vulnerabilities exist; cached data can support repeat or offline research.
 

@@ -1,5 +1,6 @@
 import re
 
+from .cache import capture_cache_events, format_cache_events
 from .matching import rank_matches
 from .models import Advisory, AssetObservation, ResearchReport
 from .sources import cisa_kev, nvd
@@ -42,24 +43,33 @@ def filter_report_severity(report: ResearchReport, include_low: bool = False) ->
     return report
 
 
-def run_research(asset: AssetObservation, offline: bool = False, limit: int | None = None) -> ResearchReport:
-    if offline:
-        return ResearchReport(asset=asset, matches=[], offline=True)
-
+def run_research(
+    asset: AssetObservation,
+    offline: bool = False,
+    limit: int | None = None,
+    refresh_cache: bool = False,
+) -> ResearchReport:
     advisories: list[Advisory] = []
     warnings = []
     query = " ".join(part for part in (asset.vendor, asset.product or asset.service) if part).strip()
-    if query:
+    with capture_cache_events() as cache_events:
+        if query:
+            try:
+                advisories.extend(nvd.search(query, offline=offline, refresh=refresh_cache))
+            except SourceError as exc:
+                warnings.append(f"NVD: {exc}")
+        else:
+            warnings.append("NVD: No product or service name was supplied, so no search was made.")
+
         try:
-            advisories.extend(nvd.search(query))
+            advisories.extend(cisa_kev.fetch_all(offline=offline, refresh=refresh_cache))
         except SourceError as exc:
-            warnings.append(f"NVD: {exc}")
-    else:
-        warnings.append("NVD: No product or service name was supplied, so no search was made.")
+            warnings.append(f"CISA KEV: {exc}")
 
-    try:
-        advisories.extend(cisa_kev.fetch_all())
-    except SourceError as exc:
-        warnings.append(f"CISA KEV: {exc}")
-
-    return ResearchReport(asset, rank_matches(advisories, asset, limit), warnings)
+    return ResearchReport(
+        asset=asset,
+        matches=rank_matches(advisories, asset, limit),
+        source_warnings=warnings,
+        source_status=format_cache_events(cache_events),
+        offline=offline,
+    )

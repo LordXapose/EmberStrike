@@ -2,6 +2,7 @@ import unittest
 
 from vuln_research.matching import match_advisory, rank_matches
 from vuln_research.models import Advisory, AffectedRange, AssetObservation
+from vuln_research.versioning import compare_versions
 
 
 class MatchingTests(unittest.TestCase):
@@ -78,6 +79,53 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(result.confidence, "Medium")
         self.assertTrue(any("comparable affected-version range" in item for item in result.missing_evidence))
         self.assertFalse(result.conflicting_evidence)
+
+    def test_debian_versions_compare_epoch_revision_and_tilde_conservatively(self):
+        self.assertEqual(compare_versions("1:1.0-2", "2.0-1"), 1)
+        self.assertEqual(compare_versions("1.0~rc1-1", "1.0-1"), -1)
+        self.assertEqual(compare_versions("1.0-10", "1.0-2"), 1)
+        self.assertIsNone(compare_versions("1.0-1ubuntu1", "1.0"))
+        self.assertIsNone(compare_versions("1.0-4.el9", "1.0-5.el9"))
+        self.assertIsNone(compare_versions("1.0-1ubuntu1", "1.1", "Ubuntu 24.04"))
+        self.assertIsNone(compare_versions("1.0-2", "1.0-10", "RHEL 9"))
+        self.assertEqual(compare_versions("1.0rc1", "1.0", "Ubuntu 24.04"), -1)
+
+    def test_debian_package_ranges_match_only_comparable_distro_versions(self):
+        self.asset.version = "1.0-1ubuntu1"
+        debian_range = Advisory(
+            cve_id="CVE-2099-0015", title="Distro package range",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat",
+                start_including="1.0-1ubuntu0", end_excluding="1.0-1ubuntu2",
+            )],
+        )
+        upstream_range = Advisory(
+            cve_id="CVE-2099-0016", title="Upstream-only range",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat",
+                start_including="1.0", end_excluding="2.0",
+            )],
+        )
+        self.assertEqual(match_advisory(debian_range, self.asset).confidence, "High")
+        result = match_advisory(upstream_range, self.asset)
+        self.assertEqual(result.confidence, "Medium")
+        self.assertFalse(result.conflicting_evidence)
+
+        self.asset.platform = "Ubuntu 24.04"
+        result = match_advisory(upstream_range, self.asset)
+        self.assertEqual(result.confidence, "Medium")
+        self.assertFalse(result.conflicting_evidence)
+
+    def test_affected_entries_deduplicate_case_and_whitespace_variants(self):
+        advisory = Advisory(
+            cve_id="CVE-2099-0017", title="Duplicate entries",
+            affected=[
+                AffectedRange(vendor="Apache", product="Tomcat", version="9.0.80"),
+                AffectedRange(vendor=" apache ", product=" TOMCAT ", version="9.0.80"),
+            ],
+        )
+        result = rank_matches([advisory], self.asset)[0]
+        self.assertEqual(len(result.advisory.affected), 1)
 
     def test_medium_observation_caps_match_confidence(self):
         self.asset.confidence = "Medium"

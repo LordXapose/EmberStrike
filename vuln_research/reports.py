@@ -43,7 +43,11 @@ def to_markdown(report: ResearchReport) -> str:
         "",
     ]
     if report.offline:
-        lines += ["Offline mode: no public sources were queried.", ""]
+        lines += ["Offline mode: no network requests were made; matching cached data may be used.", ""]
+    if report.source_status:
+        lines += ["Source status:"]
+        lines.extend(f"- {status}" for status in report.source_status)
+        lines.append("")
     if report.hidden_severity_matches:
         lines += [
             f"{report.hidden_severity_matches} low or unscored result(s) hidden. Re-run with `--include-low` to show them.",
@@ -74,7 +78,8 @@ def to_plain(report: ResearchReport) -> str:
         "Possible matches only; no requests were sent to the assessed asset.",
     ]
     if report.offline:
-        lines.append("Offline mode: no public sources were queried.")
+        lines.append("Offline mode: no network requests were made; matching cached data may be used.")
+    lines.extend(f"Source status: {status}" for status in report.source_status)
     if report.hidden_severity_matches:
         lines.append(
             f"{report.hidden_severity_matches} low or unscored result(s) hidden; use --include-low to show all severities."

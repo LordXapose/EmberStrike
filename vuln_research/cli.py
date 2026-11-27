@@ -13,6 +13,15 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
+from .cache import (
+    DEFAULT_TTL_SECONDS,
+    cache_directory,
+    capture_cache_events,
+    clear_cache,
+    format_age,
+    format_cache_events,
+    list_cache_entries,
+)
 from .models import Advisory, AssetObservation
 from .banner import BANNER
 from .catalog import PRODUCTS, SERVICE_TYPES, VENDORS
@@ -45,13 +54,16 @@ def build_parser(prog: str = "emberstrike") -> argparse.ArgumentParser:
   emberstrike search [OPTIONS]      Search public vulnerability sources for an observation
   emberstrike services              Browse common service, product, and completion suggestions
   emberstrike show CVE-ID           Read detailed public advisory information for one CVE
-  emberstrike COMMAND --help        Show help for search, services, or show
+  emberstrike cache [clear]         View or clear the local public-source cache
+  emberstrike COMMAND --help        Show help for search, services, show, or cache
 
 EXAMPLES
   emberstrike
   emberstrike search -n "Quarterly review" -s HTTPS -p "Apache Tomcat" -v Apache -V 9.0.80
   emberstrike services
   emberstrike show CVE-2023-42794
+  emberstrike cache
+  emberstrike cache clear
   emberstrike search -n "Quarterly review" --scope-notes "Written approval" \\
     -a app-01 -P 8443 --protocol https -s HTTPS -p "Apache Tomcat" \\
     -v Apache -V 9.0.80 --identified-by inventory -c Medium \\
@@ -89,7 +101,8 @@ EmberStrike | Developer: LordXapose""",
     output = parser.add_argument_group("Research and report options")
     output.add_argument("--format", choices=("plain", "json", "markdown"), default="plain", help="Report format (default: plain)")
     output.add_argument("--output", type=Path, help="Save the report to this local file")
-    output.add_argument("--offline", action="store_true", help="Skip public-source requests")
+    output.add_argument("--offline", action="store_true", help="Use only matching local cache entries; never access the network")
+    output.add_argument("--refresh-cache", action="store_true", help="Refresh matching cache entries from public sources")
     output.add_argument("--no-color", action="store_true", help="Disable color (also respects NO_COLOR)")
     output.add_argument("--limit", type=int, help="Maximum possible matches to report (default: all matches)")
     output.add_argument(
@@ -102,6 +115,56 @@ EmberStrike | Developer: LordXapose""",
     product_action.completer = ChoicesCompleter(PRODUCTS)
     vendor_action.completer = ChoicesCompleter(VENDORS)
     return parser
+
+
+def _cache_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="emberstrike cache",
+        description="Inspect or clear EmberStrike's local public-source response cache.",
+    )
+    parser.add_argument("action", nargs="?", choices=("status", "clear"), default="status")
+    parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
+    args = parser.parse_args(argv)
+    console = Console(no_color=args.no_color or "NO_COLOR" in os.environ, highlight=False)
+    if args.action == "clear":
+        try:
+            removed = clear_cache()
+        except OSError as exc:
+            console.print(f"[bold red]Could not clear cache:[/] {exc}")
+            return 1
+        console.print(f"Cleared {removed} cached response(s).")
+        return 0
+
+    entries = list_cache_entries()
+    console.print(f"Cache directory: {cache_directory()}")
+    if not entries:
+        console.print("No cached public-source responses.")
+        return 0
+
+    palette = random_palette()
+    table = Table(
+        title="LOCAL SOURCE CACHE",
+        border_style=palette["border"],
+        header_style=f"bold {palette['header']}",
+        title_style=f"bold {palette['title']}",
+        box=box.ASCII,
+        show_lines=False,
+    )
+    table.add_column("Source", style=palette["name"])
+    table.add_column("Cached at", style=palette["published"])
+    table.add_column("Age", style=palette["severity"])
+    table.add_column("Freshness", style=palette["detail_value"])
+    for entry in entries:
+        age_seconds = entry["age_seconds"]
+        age = format_age(age_seconds) if isinstance(age_seconds, int) and age_seconds >= 0 else "Unknown"
+        freshness = (
+            "Fresh" if isinstance(age_seconds, int) and 0 <= age_seconds < DEFAULT_TTL_SECONDS
+            else "Expired"
+        )
+        table.add_row(str(entry["source"]), str(entry["cached_at"]), age, freshness)
+    console.print(table)
+    console.print("[dim]Default cache freshness: 24 hours. Use --refresh-cache to update entries.[/]")
+    return 0
 
 
 def _services_main(argv: list[str]) -> int:
@@ -198,7 +261,9 @@ def _render_rich(report, console: Console):
             "Use --include-low to show all severities.[/]"
         )
     if report.offline:
-        console.print("[dim]Offline mode: no public sources queried.[/]")
+        console.print("[dim]Offline mode: no network requests were made; matching cached data may be used.[/]")
+    for status in report.source_status:
+        console.print(f"[dim]Source status: {status}[/]")
     if report.source_warnings:
         palette = random_palette()
         notices = Table(
@@ -233,10 +298,14 @@ def _show_main(argv: list[str]) -> int:
     parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain")
     parser.add_argument("--output", type=Path, help="Save the advisory report locally")
     parser.add_argument("--no-color", action="store_true", help="Disable terminal color")
+    parser.add_argument("--offline", action="store_true", help="Use only matching local cache entries; never access the network")
+    parser.add_argument("--refresh-cache", action="store_true", help="Refresh matching cache entries from public sources")
     parser.add_argument("cve_id", help="CVE identifier, e.g. CVE-2023-42794")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"CVE-\d{4}-\d{4,}", args.cve_id.upper()):
         parser.error("Use a CVE identifier such as CVE-2025-12345.")
+    if args.offline and args.refresh_cache:
+        parser.error("--offline cannot be used with --refresh-cache.")
 
     no_color = args.no_color or "NO_COLOR" in os.environ
     console = Console(no_color=no_color, highlight=False)
@@ -245,19 +314,33 @@ def _show_main(argv: list[str]) -> int:
         render_banner(console)
 
     source_warnings = []
-    try:
-        advisory = nvd.lookup(args.cve_id.upper())
-    except SourceError as exc:
-        advisory = None
-        source_warnings.append(f"NVD: {exc}")
-    try:
-        kev_advisory = next(
-            (item for item in cisa_kev.fetch_all() if item.cve_id.upper() == args.cve_id.upper()),
-            None,
-        )
-    except SourceError as exc:
-        kev_advisory = None
-        source_warnings.append(f"CISA KEV: {exc}")
+    with capture_cache_events() as cache_events:
+        try:
+            advisory = nvd.lookup(
+                args.cve_id.upper(),
+                offline=args.offline,
+                refresh=args.refresh_cache,
+            )
+        except SourceError as exc:
+            advisory = None
+            source_warnings.append(f"NVD: {exc}")
+        try:
+            kev_advisory = next(
+                (
+                    item for item in cisa_kev.fetch_all(
+                        offline=args.offline,
+                        refresh=args.refresh_cache,
+                    )
+                    if item.cve_id.upper() == args.cve_id.upper()
+                ),
+                None,
+            )
+        except SourceError as exc:
+            kev_advisory = None
+            source_warnings.append(f"CISA KEV: {exc}")
+    source_warnings.extend(format_cache_events(cache_events))
+    if args.offline:
+        source_warnings.insert(0, "Offline mode: no network requests were made; cache-only lookup.")
 
     if advisory and kev_advisory:
         advisory.known_exploited = True
@@ -302,6 +385,8 @@ def _show_main(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "cache":
+        return _cache_main(arguments[1:])
     if arguments and arguments[0] == "services":
         return _services_main(arguments[1:])
     if arguments and arguments[0] == "show":
@@ -315,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(arguments)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1.")
+    if args.offline and args.refresh_cache:
+        parser.error("--offline cannot be used with --refresh-cache.")
     no_color = args.no_color or "NO_COLOR" in os.environ
     console = Console(no_color=no_color, highlight=False)
     terminal_output = sys.stdout.isatty() and args.format == "plain"
@@ -329,9 +416,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.offline and args.format == "plain" and sys.stdout.isatty():
         with console.status("[bold cyan]Checking public vulnerability sources…[/]", spinner="dots"):
-            report = run_research(asset, offline=False, limit=args.limit)
+            report = run_research(
+                asset,
+                offline=False,
+                limit=args.limit,
+                refresh_cache=args.refresh_cache,
+            )
     else:
-        report = run_research(asset, offline=args.offline, limit=args.limit)
+        report = run_research(
+            asset,
+            offline=args.offline,
+            limit=args.limit,
+            refresh_cache=args.refresh_cache,
+        )
     filter_report_severity(report, include_low=args.include_low)
 
     if args.format == "json":

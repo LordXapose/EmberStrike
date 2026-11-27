@@ -78,6 +78,7 @@ class ResearchReport:
     asset: AssetObservation
     matches: list[PossibleMatch]
     source_warnings: list[str] = field(default_factory=list)
+    source_status: list[str] = field(default_factory=list)
     offline: bool = False
     hidden_severity_matches: int = 0
 

@@ -103,7 +103,13 @@ def _advisory(item: dict) -> Advisory:
     )
 
 
-def search(keyword: str, limit: int | None = None) -> list[Advisory]:
+def search(
+    keyword: str,
+    limit: int | None = None,
+    *,
+    offline: bool = False,
+    refresh: bool = False,
+) -> list[Advisory]:
     if not keyword.strip():
         return []
     if limit is not None and limit < 1:
@@ -120,7 +126,12 @@ def search(keyword: str, limit: int | None = None) -> list[Advisory]:
             "startIndex": start_index,
         }
         url = f"{NVD_URL}?{urlencode(params)}"
-        data = fetch_json(url, timeout=30.0)
+        options = {}
+        if offline:
+            options["offline"] = True
+        if refresh:
+            options["refresh"] = True
+        data = fetch_json(url, timeout=30.0, **options)
         try:
             vulnerabilities = data.get("vulnerabilities", [])
             if not isinstance(vulnerabilities, list):
@@ -143,12 +154,17 @@ def search(keyword: str, limit: int | None = None) -> list[Advisory]:
     return advisories
 
 
-def lookup(cve_id: str) -> Advisory | None:
+def lookup(cve_id: str, *, offline: bool = False, refresh: bool = False) -> Advisory | None:
     normalized_id = cve_id.upper()
     if not re.fullmatch(r"CVE-\d{4}-\d{4,}", normalized_id):
         raise SourceError("Enter a CVE identifier such as CVE-2025-12345.")
     url = f"{NVD_URL}?{urlencode({'cveId': normalized_id})}"
-    data = fetch_json(url)
+    options = {}
+    if offline:
+        options["offline"] = True
+    if refresh:
+        options["refresh"] = True
+    data = fetch_json(url, **options)
     vulnerabilities = data.get("vulnerabilities", [])
     if not vulnerabilities:
         return None

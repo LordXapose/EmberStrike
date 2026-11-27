@@ -186,8 +186,12 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
                 width=width,
                 palette=palette,
             )
-            footer = "Escape or Backspace: results | Q: quit"
-            renderables = [details, links, footer]
+            footer = ["Escape or Backspace: results | Q: quit"]
+            if report.offline:
+                footer.append("Offline mode: no network requests were made; cache-only lookup.")
+            footer.extend(report.source_status)
+            footer.extend(report.source_warnings)
+            renderables = [details, links, *footer]
         else:
             page_size = max(1, height - 8)
             page_start = state["selected"] // page_size * page_size
@@ -204,6 +208,10 @@ def run_selectable_table(report: ResearchReport, no_color: bool = False) -> None
                 "Up/Down: move | Enter: details | Q: quit",
                 "Possible matches only; no requests were sent to the assessed asset.",
             ]
+            if report.offline:
+                footer.append("Offline mode: no network requests were made; cache-only lookup.")
+            footer.extend(report.source_status)
+            footer.extend(report.source_warnings)
             if report.hidden_severity_matches:
                 footer.append(
                     f"Low or unscored hidden: {report.hidden_severity_matches}; use --include-low to include."

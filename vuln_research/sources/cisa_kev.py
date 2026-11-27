@@ -5,8 +5,13 @@ from .base import SourceError, fetch_json
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 
-def fetch_all() -> list[Advisory]:
-    data = fetch_json(KEV_URL)
+def fetch_all(*, offline: bool = False, refresh: bool = False) -> list[Advisory]:
+    options = {}
+    if offline:
+        options["offline"] = True
+    if refresh:
+        options["refresh"] = True
+    data = fetch_json(KEV_URL, **options)
     try:
         entries = data["vulnerabilities"]
         return [
