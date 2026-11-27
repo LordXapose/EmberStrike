@@ -66,7 +66,10 @@ def _version_in_range(version: str, affected) -> bool | None:
     if not version:
         return None
     if affected.version and affected.version not in ("*", "-"):
-        return _normalize(version) == _normalize(affected.version)
+        try:
+            return Version(version) == Version(affected.version)
+        except InvalidVersion:
+            return _normalize(version) == _normalize(affected.version)
     bounds = (
         affected.start_including, affected.start_excluding,
         affected.end_including, affected.end_excluding,

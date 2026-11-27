@@ -36,6 +36,49 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual(result.confidence, "Low")
         self.assertTrue(result.conflicting_evidence)
 
+    def test_exact_version_accepts_equivalent_standard_version_prefix(self):
+        advisory = Advisory(
+            cve_id="CVE-2099-0011", title="Exact version issue",
+            affected=[AffectedRange(vendor="Apache", product="Tomcat", version="v9.0.80")],
+        )
+        result = match_advisory(advisory, self.asset)
+        self.assertEqual(result.confidence, "High")
+        self.assertIn("falls within", " ".join(result.why_match))
+
+    def test_version_range_respects_inclusive_and_exclusive_endpoints(self):
+        inclusive = Advisory(
+            cve_id="CVE-2099-0012", title="Inclusive endpoint",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat",
+                start_including="9.0.80", end_including="9.0.80",
+            )],
+        )
+        exclusive = Advisory(
+            cve_id="CVE-2099-0013", title="Exclusive endpoint",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat",
+                start_including="9.0.0", end_excluding="9.0.80",
+            )],
+        )
+        self.assertEqual(match_advisory(inclusive, self.asset).confidence, "High")
+        result = match_advisory(exclusive, self.asset)
+        self.assertEqual(result.confidence, "Low")
+        self.assertTrue(result.conflicting_evidence)
+
+    def test_unparseable_vendor_version_stays_uncertain(self):
+        self.asset.version = "9.0.80-redhat1"
+        advisory = Advisory(
+            cve_id="CVE-2099-0014", title="Vendor version issue",
+            affected=[AffectedRange(
+                vendor="Apache", product="Tomcat",
+                start_including="9.0.0", end_excluding="9.0.90",
+            )],
+        )
+        result = match_advisory(advisory, self.asset)
+        self.assertEqual(result.confidence, "Medium")
+        self.assertTrue(any("comparable affected-version range" in item for item in result.missing_evidence))
+        self.assertFalse(result.conflicting_evidence)
+
     def test_medium_observation_caps_match_confidence(self):
         self.asset.confidence = "Medium"
         advisory = Advisory(

@@ -269,13 +269,14 @@ Run `emberstrike search --help` for the full search help. `show` accepts `--form
 
 ## Roadmap
 
-These are planned improvements, not features currently available. The order prioritizes match reliability before adding more data and workflows.
+Items are labeled as implemented or planned; planned work is not currently available. The order prioritizes match reliability before adding more data and workflows.
 
 ### 1. Match accuracy
 
 - Initial Stage 1 work is implemented: exact product matching with a small explicit alias set, escaped-colon CPE parsing, and NVD pagination.
-- Continue improving affected-version range handling and deduplication.
-- Treat unfamiliar or vendor-specific versions conservatively; never infer that an unparseable version is affected.
+- Implemented: standard exact-version spellings are compared using normalized version semantics, inclusive/exclusive range endpoints are checked, and unparseable vendor versions remain uncertain rather than being inferred as affected.
+- Planned: improve ecosystem-specific affected-version parsing and deduplication.
+- Planned: continue treating unfamiliar or vendor-specific versions conservatively; never infer that an unparseable version is affected.
 - Distinguish product match, version match, and host verification, and explain what evidence supports each confidence level.
 - Test ambiguous product names, vendor forks, backported fixes, missing versions, and conflicting evidence.
 
