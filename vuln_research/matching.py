@@ -207,11 +207,42 @@ def rank_matches(
         if existing is None:
             by_id[advisory.cve_id] = advisory
             continue
+        previous_values = {
+            "title": existing.title,
+            "remediation": existing.remediation,
+            "remediation_due": existing.remediation_due,
+            "kev_date_added": existing.kev_date_added,
+        }
         existing.known_exploited |= advisory.known_exploited
         existing.sources = sorted(set(existing.sources + advisory.sources))
         existing.references = list(dict.fromkeys(existing.references + advisory.references))
         existing.vendor_advisories = list(dict.fromkeys(existing.vendor_advisories + advisory.vendor_advisories))
-        existing.remediation = existing.remediation or advisory.remediation
+        if "CISA KEV" in advisory.sources:
+            existing.remediation = advisory.remediation or existing.remediation
+            existing.remediation_due = advisory.remediation_due or existing.remediation_due
+            existing.kev_date_added = advisory.kev_date_added or existing.kev_date_added
+        else:
+            existing.remediation = existing.remediation or advisory.remediation
+        existing.cvss_score = existing.cvss_score if existing.cvss_score is not None else advisory.cvss_score
+        existing.cvss_version = existing.cvss_version or advisory.cvss_version
+        existing.cvss_vector = existing.cvss_vector or advisory.cvss_vector
+        existing.cwes = list(dict.fromkeys(existing.cwes + advisory.cwes))
+        existing.affected_configurations = list(dict.fromkeys(
+            existing.affected_configurations + advisory.affected_configurations
+        ))
+        existing.kev_date_added = existing.kev_date_added or advisory.kev_date_added
+        existing.remediation_due = existing.remediation_due or advisory.remediation_due
+        for field_name, sources in advisory.fact_sources.items():
+            if field_name in previous_values:
+                previous = previous_values[field_name]
+                incoming = getattr(advisory, field_name)
+                if previous and incoming and previous != incoming:
+                    if field_name != "title" and "CISA KEV" in advisory.sources:
+                        existing.fact_sources[field_name] = list(dict.fromkeys(sources))
+                    continue
+            existing.fact_sources[field_name] = list(dict.fromkeys(
+                existing.fact_sources.get(field_name, []) + sources
+            ))
         existing.affected = _unique_affected(existing.affected + advisory.affected)
         existing.references = list(dict.fromkeys(existing.references))
         existing.vendor_advisories = list(dict.fromkeys(existing.vendor_advisories))

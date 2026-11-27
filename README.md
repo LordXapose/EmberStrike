@@ -224,7 +224,7 @@ Completion suggests common names; custom service and product names remain accept
 | `emberstrike [OPTIONS]` | Research supplied observation details without prompts when required values are provided. |
 | `emberstrike search [OPTIONS]` | Run the same research flow with an explicit `search` command. |
 | `emberstrike services` | List common service types and product suggestions. This list is not exhaustive. |
-| `emberstrike show CVE-ID` | Retrieve public details for one CVE, including affected versions and remediation. |
+| `emberstrike show CVE-ID` | Retrieve public details for one CVE, including CVSS, CWE, affected configurations, KEV dates, remediation, and source attribution. |
 | `emberstrike cache` | Show cached public-source responses and their ages. |
 | `emberstrike cache clear` | Clear EmberStrike's local public-source cache. |
 | `emberstrike COMMAND --help` | Show help and options for a command. |
@@ -310,12 +310,13 @@ Items are labeled as implemented or planned; planned work is not currently avail
 
 ### 3. Trusted-source evidence
 
-- Expand modular adapters for primary vendor advisories and trusted public catalogs.
-- Display available CVSS score/vector, CWE, affected configurations, remediation dates, and fixed versions.
-- Attribute each important fact to its source; label unavailable information rather than filling gaps.
+- Implemented: show NVD-provided CVSS score/vector, CWE IDs, and affected-configuration context when available.
+- Implemented: show CISA KEV date-added and remediation due dates, and include per-field source URLs in JSON plus source labels in detail reports.
+- Planned: expand modular adapters to retrieve and parse primary vendor advisories, not only link to them.
+- Planned: add fixed-version details where trusted sources publish them.
 - Treat vendor “not affected” and fixed-version statements as evidence to assess, not host-level proof.
 
-**Milestone:** users can trace advisory, version, severity, and exploitation claims to the source that supplied them.
+**Milestone:** users can trace advisory, version, severity, and exploitation claims to the source that supplied them. Vendor-specific retrieval and fixed-version extraction remain planned.
 
 ### 4. CLI and reporting workflow
 

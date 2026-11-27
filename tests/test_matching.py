@@ -203,18 +203,54 @@ class MatchingTests(unittest.TestCase):
             affected=[AffectedRange("Apache", "Tomcat"), AffectedRange("Apache", "Tomcat")],
             references=["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
             sources=["NVD"],
+            cvss_score=9.8,
+            cvss_version="3.1",
+            cvss_vector="CVSS:3.1/AV:N/AC:L",
+            cwes=["CWE-79"],
+            remediation="Old action from NVD's CISA enrichment.",
+            fact_sources={
+                "title": ["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
+                "cvss": ["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
+                "cwes": ["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
+                "remediation": ["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
+            },
         )
         kev = Advisory(
             "CVE-2099-0004", "CISA title",
             affected=[AffectedRange("Apache", "Tomcat")],
             references=["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
             known_exploited=True, sources=["CISA KEV"],
+            remediation="Current action from the KEV catalog.",
+            remediation_due="2025-01-02",
+            cwes=["CWE-89"],
+            fact_sources={
+                "known_exploited": ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+                "title": ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+                "remediation": ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+                "remediation_due": ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+            },
         )
         result = rank_matches([nvd, kev], self.asset)[0]
         self.assertTrue(result.advisory.known_exploited)
         self.assertEqual(set(result.advisory.sources), {"NVD", "CISA KEV"})
         self.assertEqual(len(result.advisory.affected), 1)
         self.assertEqual(len(result.advisory.references), 1)
+        self.assertEqual(result.advisory.cvss_score, 9.8)
+        self.assertEqual(result.advisory.cwes, ["CWE-79", "CWE-89"])
+        self.assertEqual(result.advisory.remediation_due, "2025-01-02")
+        self.assertEqual(result.advisory.remediation, "Current action from the KEV catalog.")
+        self.assertEqual(
+            result.advisory.fact_sources["title"],
+            ["https://nvd.nist.gov/vuln/detail/CVE-2099-0004"],
+        )
+        self.assertEqual(
+            result.advisory.fact_sources["remediation"],
+            ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+        )
+        self.assertIn(
+            "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+            result.advisory.fact_sources["known_exploited"],
+        )
 
     def test_returns_all_matches_unless_a_limit_is_given(self):
         advisories = [

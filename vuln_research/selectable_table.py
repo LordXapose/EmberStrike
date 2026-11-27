@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .models import Advisory, ResearchReport
+from .reports import advisory_detail_rows
 
 
 def random_palette() -> dict[str, str]:
@@ -91,17 +92,8 @@ def build_detail_tables(
     )
     details.add_column("Name", style=palette["detail_name"], no_wrap=True)
     details.add_column("Information", style=palette["detail_value"], max_width=max(20, width - 32))
-    details.add_row("Vulnerability", " ".join(advisory.title.split())[:120])
-    details.add_row("Severity", advisory.severity)
-    details.add_row("Published", advisory.published[:10] or "Unknown")
-    details.add_row("Updated", advisory.updated[:10] or "Unknown")
-    details.add_row("Known exploited", "Yes (CISA KEV)" if advisory.known_exploited else "Not listed")
-    affected = [item.label() for item in advisory.affected[:3]]
-    if len(advisory.affected) > len(affected):
-        affected.append(f"...and {len(advisory.affected) - len(affected)} more; see NVD")
-    details.add_row("Affected ranges", "; ".join(affected) or "See linked advisory")
-    remediation = " ".join(advisory.remediation.split()) or "See vendor advisory"
-    details.add_row("Remediation", remediation[:160] + ("..." if len(remediation) > 160 else ""))
+    for name, value in advisory_detail_rows(advisory):
+        details.add_row(name, value)
 
     links = Table(
         title="Source Links",

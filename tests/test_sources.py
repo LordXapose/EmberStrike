@@ -16,6 +16,7 @@ from vuln_research.cache import (
 from vuln_research.models import AssetObservation
 from vuln_research.research import run_research
 from vuln_research.sources.base import SourceError, fetch_json
+from vuln_research.sources.cisa_kev import fetch_all as fetch_kev
 from vuln_research.sources.nvd import _parse_criteria, search
 
 
@@ -52,6 +53,75 @@ class NvdParsingTests(unittest.TestCase):
             ["https://nvd.nist.gov/vuln/detail/CVE-2099-0001"],
         )
         self.assertEqual(advisory.vendor_advisories, ["https://vendor.example/security"])
+        self.assertEqual(advisory.fact_sources["vendor_advisories"], [
+            "https://vendor.example/security",
+        ])
+
+    def test_nvd_extracts_cvss_cwe_configuration_and_provenance(self):
+        response = {
+            "vulnerabilities": [{
+                "cve": {
+                    "id": "CVE-2099-0018",
+                    "descriptions": [{"lang": "en", "value": "Example advisory."}],
+                    "cisaExploitAdd": "2025-01-02",
+                    "cisaActionDue": "2025-02-03",
+                    "cisaRequiredAction": "Apply the vendor update.",
+                    "metrics": {
+                        "cvssMetricV31": [
+                            {
+                                "type": "Secondary",
+                                "cvssData": {"baseScore": 7.0, "version": "3.1"},
+                            },
+                            {
+                                "type": "Primary",
+                                "cvssData": {
+                                    "baseScore": 8.8,
+                                    "baseSeverity": "HIGH",
+                                    "version": "3.1",
+                                    "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                                },
+                            },
+                        ],
+                    },
+                    "weaknesses": [{
+                        "description": [
+                            {"lang": "en", "value": "CWE-79"},
+                            {"lang": "en", "value": "NVD-CWE-noinfo"},
+                        ],
+                    }],
+                    "configurations": [{
+                        "nodes": [{
+                            "operator": "AND",
+                            "cpeMatch": [
+                                {
+                                    "vulnerable": True,
+                                    "criteria": "cpe:2.3:a:apache:tomcat:9.0.80:*:*:*:*:*:*:*",
+                                },
+                                {
+                                    "vulnerable": False,
+                                    "criteria": "cpe:2.3:o:linux:linux_kernel:6.1:*:*:*:*:*:*:*",
+                                },
+                            ],
+                        }],
+                    }],
+                    "references": [],
+                },
+            }],
+        }
+        with patch("vuln_research.sources.nvd.fetch_json", return_value=response):
+            advisory = search("Apache Tomcat")[0]
+        self.assertEqual(advisory.cvss_score, 8.8)
+        self.assertEqual(advisory.cvss_version, "3.1")
+        self.assertTrue(advisory.cvss_vector.startswith("CVSS:3.1/"))
+        self.assertEqual(advisory.cwes, ["CWE-79"])
+        self.assertEqual(len(advisory.affected), 1)
+        self.assertIn("AND:", advisory.affected_configurations[0])
+        self.assertIn("required: linux linux kernel 6.1", advisory.affected_configurations[0])
+        self.assertEqual(advisory.kev_date_added, "2025-01-02")
+        self.assertEqual(advisory.remediation_due, "2025-02-03")
+        self.assertEqual(advisory.remediation, "Apply the vendor update.")
+        self.assertEqual(advisory.fact_sources["cvss"], ["https://nvd.nist.gov/vuln/detail/CVE-2099-0018"])
+        self.assertEqual(advisory.fact_sources["cwes"], ["https://nvd.nist.gov/vuln/detail/CVE-2099-0018"])
 
     def test_search_fetches_every_nvd_page(self):
         def response_for_url(url, timeout):
@@ -176,6 +246,31 @@ class SourceCacheTests(unittest.TestCase):
         self.assertTrue(report.offline)
         nvd_search.assert_called_once_with("Apache Tomcat", offline=True, refresh=False)
         kev_fetch.assert_called_once_with(offline=True, refresh=False)
+
+
+class CisaKevTests(unittest.TestCase):
+    def test_kev_extracts_due_date_cwes_and_provenance(self):
+        response = {
+            "vulnerabilities": [{
+                "cveID": "CVE-2099-0019",
+                "vendorProject": "Example",
+                "product": "Server",
+                "vulnerabilityName": "Example vulnerability",
+                "dateAdded": "2025-01-02",
+                "dueDate": "2025-02-03",
+                "requiredAction": "Apply the vendor update.",
+                "cwes": ["CWE-79"],
+            }],
+        }
+        with patch("vuln_research.sources.cisa_kev.fetch_json", return_value=response):
+            advisory = fetch_kev()[0]
+        self.assertEqual(advisory.kev_date_added, "2025-01-02")
+        self.assertEqual(advisory.remediation_due, "2025-02-03")
+        self.assertEqual(advisory.cwes, ["CWE-79"])
+        self.assertIn("CISA KEV", advisory.sources)
+        self.assertEqual(advisory.fact_sources["remediation_due"], [
+            "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+        ])
 
 
 if __name__ == "__main__":

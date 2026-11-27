@@ -17,7 +17,14 @@ from vuln_research.cli import (
 )
 from vuln_research.banner import BANNER
 from vuln_research.models import Advisory, AssetObservation, AffectedRange, PossibleMatch, ResearchReport
-from vuln_research.reports import advisory_to_plain, to_json, to_markdown, to_plain
+from vuln_research.reports import (
+    advisory_to_json,
+    advisory_to_markdown,
+    advisory_to_plain,
+    to_json,
+    to_markdown,
+    to_plain,
+)
 from vuln_research.research import filter_report_severity, run_research
 from vuln_research.selectable_table import (
     build_detail_tables,
@@ -148,6 +155,43 @@ class InputTests(unittest.TestCase):
         self.assertIn("and 17 more", rendered)
         self.assertNotIn("lengthy description", rendered)
         self.assertNotIn("Product 19", rendered)
+
+    def test_advisory_report_shows_evidence_and_per_field_sources(self):
+        advisory = Advisory(
+            "CVE-2025-12345",
+            "Evidence sample",
+            severity="HIGH (CVSS 3.1)",
+            remediation="Apply the vendor update.",
+            cvss_score=8.8,
+            cvss_version="3.1",
+            cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            cwes=["CWE-79"],
+            affected_configurations=["AND: affected Example Server <2.0"],
+            kev_date_added="2025-01-02",
+            remediation_due="2025-02-03",
+            fact_sources={
+                "cvss": ["https://nvd.nist.gov/vuln/detail/CVE-2025-12345"],
+                "cwes": ["https://nvd.nist.gov/vuln/detail/CVE-2025-12345"],
+                "affected_configurations": ["https://nvd.nist.gov/vuln/detail/CVE-2025-12345"],
+                "remediation_due": ["https://www.cisa.gov/known-exploited-vulnerabilities-catalog"],
+            },
+        )
+        rendered = advisory_to_plain(advisory)
+        self.assertIn("8.8 (CVSS 3.1) (source: NVD)", rendered)
+        self.assertIn("CWE-79 (source: NVD)", rendered)
+        self.assertIn("Configurations", rendered)
+        self.assertIn("2025-02-03 (source: CISA KEV)", rendered)
+        markdown = advisory_to_markdown(advisory)
+        self.assertIn("CVSS vector", markdown)
+        self.assertIn("source: NVD", markdown)
+        structured = json.loads(advisory_to_json(advisory))
+        self.assertEqual(structured["advisory"]["fact_sources"]["cvss"], [
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-12345",
+        ])
+        details, _ = build_detail_tables(advisory)
+        output = io.StringIO()
+        Console(file=output, no_color=True, width=120).print(details)
+        self.assertIn("CVSS vector", output.getvalue())
 
     def test_terminal_show_renderer_uses_rich_detail_tables(self):
         advisory = Advisory(

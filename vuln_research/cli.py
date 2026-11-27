@@ -293,7 +293,7 @@ def _show_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="emberstrike show",
         description="Show public advisory details for one CVE. This command does not provide exploit instructions or contact a target.",
-        epilog="Displays severity, dates, affected versions, KEV status, remediation, primary links, and safe verification guidance.",
+        epilog="Displays CVSS score/vector, CWE, affected configuration context, dates, KEV status, remediation, source attribution, primary links, and safe verification guidance.",
     )
     parser.add_argument("--format", choices=("plain", "json", "markdown"), default="plain")
     parser.add_argument("--output", type=Path, help="Save the advisory report locally")

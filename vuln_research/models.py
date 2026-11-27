@@ -62,6 +62,14 @@ class Advisory:
     exploitation_note: str = ""
     remediation: str = ""
     sources: list[str] = field(default_factory=list)
+    cvss_score: float | None = None
+    cvss_version: str = ""
+    cvss_vector: str = ""
+    cwes: list[str] = field(default_factory=list)
+    affected_configurations: list[str] = field(default_factory=list)
+    kev_date_added: str = ""
+    remediation_due: str = ""
+    fact_sources: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
